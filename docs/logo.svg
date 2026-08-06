@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- squircle -->
+  <rect x="32" y="32" width="448" height="448" rx="100" fill="#000000"/>
+
+  <!-- skua in flight: swept wings, small head, pointed tail -->
+  <path fill="#ffffff" d="
+    M 92 248
+    C 158 172, 220 180, 244 212
+    C 249 198, 263 198, 268 212
+    C 292 180, 354 172, 420 248
+    C 356 216, 306 234, 281 260
+    L 256 352
+    L 231 260
+    C 206 234, 156 216, 92 248
+    Z"/>
+</svg>

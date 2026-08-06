@@ -1,0 +1,31 @@
+# skua config — copy to ~/.config/skua/config.yaml (all fields optional).
+# CLI flags (--profile / --region) take precedence over these values.
+
+# Default AWS profile to use when --profile is not given. If empty, skua
+# shows the profile picker at startup.
+default_profile: ""
+
+# Default AWS region when --region is not given.
+default_region: ap-northeast-1
+
+# Auto-refresh interval for the inventory (duration: "30s", "2m", "1h").
+# Unset defaults to 30s (auto-refresh on); "0" disables it (manual "r" only).
+refresh_interval: "30s"
+
+# Multiplexer leader (prefix) key inside a split session. Press it, then a
+# command key (h/l focus, b broadcast, x close, d detach). Default "ctrl+b".
+# Examples: "ctrl+a", "ctrl+ " (ctrl+space).
+session_leader: "ctrl+b"
+
+# Mouse support: wheel scrolls (list, detail/help, pane scrollback), click
+# selects a row / focuses a pane, double-click connects. Default true.
+# With the mouse on, terminal-native text selection needs Shift+drag; set
+# false to keep plain click-drag selection instead.
+mouse: true
+
+# Update check: the SSM Parameter Store name holding the latest published
+# version. skua reads it on startup and shows an "⬆ update" badge if the
+# running version differs. Default "/skua/latest-version".
+version_param: "/skua/latest-version"
+# Set true to turn the update check off entirely.
+disable_version_check: false
