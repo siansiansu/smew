@@ -1,5 +1,5 @@
-//! smew is a local AWS SSM connection tool with a tmux-like
-//! multiplexing / broadcast experience and an interactive resource browser.
+//! smew is a local AWS SSM connection tool with a multiplexing /
+//! broadcast experience and an interactive resource browser.
 
 pub mod aws;
 pub mod config;

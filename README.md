@@ -5,7 +5,7 @@
 <h1 align="center">smew</h1>
 
 <p align="center">
-k9s for your AWS fleet: browse EC2 and its resources, and open SSM shell
+A terminal UI for AWS: browse EC2 and its resources, and open SSM shell
 or port-forwarding sessions with split panes and broadcast.
 No server, no inbound port 22 — access control and audit stay on AWS.
 </p>
@@ -19,16 +19,16 @@ No server, no inbound port 22 — access control and audit stay on AWS.
 
 ## Features
 
-- **Inventory browser** — a k9s-style framed table: EC2 detail, live SSM
+- **Inventory browser** — a framed, information-dense table: EC2 detail, live SSM
   reachability, opt-in %CPU/%MEM, caller identity in the header, sorting,
   filtering, vim-style navigation
 - **Resource views** — `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip`
   `:ami` switch the table to the rest of the EC2 family; `Enter` on a
   vpc / subnet / sg drills into its instances; orphaned volumes, idle EIPs
   and subnets near IP exhaustion light up
-- **Command mode** — a k9s-style `:` prompt with inline completion; switch
-  AWS profiles with `:ctx` / `:profile <name>` (fuzzy) or the fzf-style
-  picker
+- **Command mode** — a `:` prompt with inline completion; switch
+  AWS profiles with `:ctx` / `:profile <name>` (fuzzy) or the
+  type-to-filter fuzzy picker
 - **Multi-pane sessions** — mark hosts, open split panes of live SSM shells;
   broadcast input, layouts, zoom, scrollback
 - **Port forwarding** — SSM port-forwarding sessions from the same list

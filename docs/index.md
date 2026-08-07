@@ -5,8 +5,8 @@ hero:
   name: smew
   text: AWS SSM sessions, multiplexed.
   tagline: >-
-    k9s for your AWS fleet: browse EC2 and its resources, shell in over SSM
-    with split panes and broadcast. No server, no inbound port 22 — access
+    Browse EC2 and its resources; shell in over SSM with split panes and
+    broadcast. No server, no inbound port 22 — access
     control and audit stay on AWS.
   image:
     src: /logo.svg
@@ -23,13 +23,13 @@ features:
   - icon: 🔭
     title: Inventory browser
     details: >-
-      A k9s-style framed table: EC2 detail, live SSM reachability, opt-in
+      A framed, information-dense table: EC2 detail, live SSM reachability, opt-in
       %CPU/%MEM, caller identity in the header, reverse filtering and
       vim-style jumps.
   - icon: ⌨️
     title: Command mode
     details: >-
-      A k9s-style `:` prompt with inline completion — :vol :sg :vpc :eni
+      A `:` prompt with inline completion — :vol :sg :vpc :eni
       switch resource views; :ctx / :profile switch AWS accounts with fuzzy
       matching.
   - icon: 🧭
@@ -42,7 +42,7 @@ features:
     title: Multi-pane sessions
     details: >-
       Mark hosts and open them as split panes of live SSM shells. Leader-key
-      broadcast, layouts, zoom, and scrollback — a tmux-style multiplexer.
+      broadcast, layouts, zoom, and scrollback — a full multiplexer over SSM.
   - icon: 🔐
     title: SSH over SSM
     details: >-

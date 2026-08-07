@@ -19,7 +19,7 @@ and configured leader key.
 
 | Key | Action |
 | --- | --- |
-| `:` | open the command prompt (k9s-style, inline completion) |
+| `:` | open the command prompt (inline completion) |
 | `Tab` | accept the suggestion; `↑` recalls the last command / cycles |
 | `:ec2` `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip` `:ami` | switch resource view (AWS aliases work: `ebs`, `sub`, `images`, …) |
 | `:profile [name]` / `:ctx` | switch AWS profile — fuzzy-matched with a name, the picker without |
@@ -56,7 +56,7 @@ instances (`Esc` there goes back, cursor restored); `Enter` elsewhere and
 
 ## Profile picker
 
-Typing filters immediately, fzf-style — no `/` needed. Fuzzy subsequence
+Typing filters immediately — no `/` needed. Fuzzy subsequence
 matching (`cldprd` finds `Cloud.prod`), matched characters highlighted.
 `↑↓` / `Ctrl+p` / `Ctrl+n` move, `Enter` selects, `Esc` clears the query
 then cancels, `Ctrl+c` quits.
