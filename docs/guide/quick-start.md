@@ -56,7 +56,7 @@ accepts, `↑` recalls the last command):
 
 - `s` on a host opens an SSM shell.
 - `Space` marks multiple hosts, then `s` opens them **as split panes** in one
-  session — an iTerm2-like multiplexer over SSM.
+  session — a tmux-like multiplexer over SSM.
 
 ## Port forward
 

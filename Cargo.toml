@@ -17,7 +17,7 @@ include = [
     "/README.md",
     "/LICENSE",
 ]
-description = "TUI for AWS SSM sessions: EC2 inventory browser with iTerm2-style split panes and broadcast"
+description = "k9s for your AWS fleet: browse EC2 and its resources, shell in over SSM with split panes and broadcast"
 license = "MIT"
 repository = "https://github.com/siansiansu/smew"
 homepage = "https://siansiansu.github.io/smew/"

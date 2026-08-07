@@ -5,9 +5,9 @@ hero:
   name: smew
   text: AWS SSM sessions, multiplexed.
   tagline: >-
-    An interactive EC2/SSM inventory browser with iTerm2-like split panes and
-    broadcast. No server, no inbound port 22 — access control and audit stay
-    on AWS.
+    k9s for your AWS fleet: browse EC2 and its resources, shell in over SSM
+    with split panes and broadcast. No server, no inbound port 22 — access
+    control and audit stay on AWS.
   image:
     src: /logo.svg
     alt: smew
@@ -42,7 +42,7 @@ features:
     title: Multi-pane sessions
     details: >-
       Mark hosts and open them as split panes of live SSM shells. Leader-key
-      broadcast, layouts, zoom, and scrollback — like tmux or iTerm2.
+      broadcast, layouts, zoom, and scrollback — a tmux-style multiplexer.
   - icon: 🔐
     title: SSH over SSM
     details: >-

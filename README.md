@@ -5,8 +5,8 @@
 <h1 align="center">smew</h1>
 
 <p align="center">
-A terminal UI for AWS SSM: browse your EC2 inventory and open shell or
-port-forwarding sessions with iTerm2-like multi-pane / broadcast support.
+k9s for your AWS fleet: browse EC2 and its resources, and open SSM shell
+or port-forwarding sessions with split panes and broadcast.
 No server, no inbound port 22 — access control and audit stay on AWS.
 </p>
 
