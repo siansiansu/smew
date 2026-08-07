@@ -6,35 +6,20 @@ use crossterm::event::KeyEvent;
 use super::{ConfirmKind, Mode, Model};
 
 impl Model {
+    /// fzf-style picker: printable keys type into the query and the list
+    /// re-ranks immediately; arrows/ctrl+n/p move; enter selects; esc clears
+    /// the query, then cancels (or quits when there is nothing to return to).
     pub(super) fn update_profiles(&mut self, k: &KeyEvent, s: &str) {
-        if self.picker_typing {
-            match s {
-                // ctrl+c must quit even while typing in the filter.
-                "ctrl+c" => self.quit = true,
-                "esc" => {
-                    self.picker_typing = false;
-                    self.picker_input.clear();
-                    self.picker_query.clear();
-                    self.picker_cursor = 0;
-                }
-                "enter" => {
-                    self.picker_query = self.picker_input.value().to_string();
-                    self.picker_typing = false;
-                }
-                _ => {
-                    if self.picker_input.handle(k) {
-                        self.picker_cursor = 0;
-                    }
-                }
-            }
-            return;
-        }
         match s {
-            "ctrl+c" | "q" => self.quit = true,
+            "ctrl+c" => self.quit = true,
             "esc" => {
-                if self.inventory.is_some() {
-                    // cancel only if we already have a session
-                    self.mode = Mode::List;
+                if !self.picker_input.value().is_empty() {
+                    self.picker_input.clear();
+                    self.picker_cursor = 0;
+                } else if self.inventory.is_some() {
+                    self.mode = Mode::List; // cancel only if we have a session
+                } else {
+                    self.quit = true; // startup picker: nothing to go back to
                 }
             }
             "enter" => {
@@ -42,43 +27,42 @@ impl Model {
                     self.select_profile(&p);
                 }
             }
-            "/" => {
-                self.picker_typing = true;
-                self.picker_input.clear();
-                self.picker_query.clear();
-                self.picker_cursor = 0;
-            }
-            "up" | "k" => self.picker_cursor = self.picker_cursor.saturating_sub(1),
-            "down" | "j" => {
+            "up" | "ctrl+p" => self.picker_cursor = self.picker_cursor.saturating_sub(1),
+            "down" | "ctrl+n" => {
                 let max = self.picker_filtered().len().saturating_sub(1);
                 self.picker_cursor = (self.picker_cursor + 1).min(max);
             }
-            "g" | "home" => self.picker_cursor = 0,
-            "G" | "end" => self.picker_cursor = self.picker_filtered().len().saturating_sub(1),
+            "home" => self.picker_cursor = 0,
+            "end" => self.picker_cursor = self.picker_filtered().len().saturating_sub(1),
             "pgup" => self.picker_cursor = self.picker_cursor.saturating_sub(10),
             "pgdown" => {
                 let max = self.picker_filtered().len().saturating_sub(1);
                 self.picker_cursor = (self.picker_cursor + 10).min(max);
             }
-            _ => {}
+            _ => {
+                if self.picker_input.handle(k) {
+                    self.picker_cursor = 0;
+                }
+            }
         }
     }
 
-    /// The profile names passing the picker's substring filter. Profiles are
-    /// a small, known, structured set, so substring is more predictable than
-    /// fuzzy (e.g. "cloud" → all Cloud.*; a typo like "cloude" → nothing).
+    /// Profiles ranked by fuzzy score against the query (best first), with
+    /// the matched char positions for highlighting. Empty query = all
+    /// profiles in their natural order.
+    pub(crate) fn picker_ranked(&self) -> Vec<(String, Vec<usize>)> {
+        crate::fuzzy::rank(
+            self.picker_input.value(),
+            self.profiles.iter().map(String::as_str),
+        )
+        .into_iter()
+        .map(|(i, fm)| (self.profiles[i].clone(), fm.positions))
+        .collect()
+    }
+
+    /// The ranked profile names only (selection / mouse hit-testing).
     pub(crate) fn picker_filtered(&self) -> Vec<String> {
-        let q = if self.picker_typing {
-            self.picker_input.value()
-        } else {
-            &self.picker_query
-        };
-        let q = q.trim().to_lowercase();
-        self.profiles
-            .iter()
-            .filter(|p| q.is_empty() || p.to_lowercase().contains(&q))
-            .cloned()
-            .collect()
+        self.picker_ranked().into_iter().map(|(p, _)| p).collect()
     }
 
     /// Rebuilds the inventory/driver for the chosen profile and reloads.
@@ -92,31 +76,46 @@ impl Model {
                 self.driver = Some(drv);
                 self.profile = p.to_string();
                 self.region = region;
+                self.identity = None; // re-resolved for the new profile
                 self.mode = Mode::List;
                 self.loading = true;
                 self.status = format!("loading… ({p})");
+                self.load_gen += 1; // in-flight loads for the old profile are stale
                 self.all.clear();
                 self.filtered.clear();
+                self.res_all.clear();
+                self.res_filtered.clear();
+                self.res_kind = self.view; // the cache is gone, whatever it held
+                self.drill_from = None;
                 self.util.clear();
                 self.last_util_fetch = None; // metrics must reload right away
                 self.filter.clear();
                 self.table_to_top();
                 self.update_available = false; // re-check against the new profile
-                self.spawn_load();
+                self.spawn_load_active();
+                self.spawn_identity();
                 self.spawn_version_check();
             }
         }
     }
 
     pub(super) fn update_detail(&mut self, s: &str) {
+        let is_instance = self.view == crate::resources::ResourceKind::Instances;
         match s {
             "q" | "ctrl+c" => self.quit = true,
             "esc" | "d" | "enter" => self.mode = Mode::List,
-            "s" => {
+            "s" if is_instance => {
                 let t = vec![self.detail.clone()];
                 self.start_session(t);
             }
-            _ => self.overlay_scroll_key(s, self.detail_lines().len()),
+            _ => {
+                let total = if is_instance {
+                    self.detail_lines().len()
+                } else {
+                    self.res_detail_lines().len()
+                };
+                self.overlay_scroll_key(s, total);
+            }
         }
     }
 
@@ -206,12 +205,41 @@ mod tests {
     }
 
     #[test]
-    fn profile_picker_filter() {
+    fn profile_picker_fuzzy_filter() {
         let mut m = test_model();
         m.profiles = vec!["Cloud.dev".into(), "Cloud.prod".into(), "personal".into()];
-        m.picker_query = "cloud".into();
+        m.picker_input.insert_str("cloud");
         assert_eq!(m.picker_filtered().len(), 2);
-        m.picker_query = "cloude".into();
+        // fuzzy: subsequence with skipped chars still matches, best first
+        m.picker_input.clear();
+        m.picker_input.insert_str("cldprd");
+        assert_eq!(m.picker_filtered(), vec!["Cloud.prod".to_string()]);
+        m.picker_input.clear();
+        m.picker_input.insert_str("zzz");
         assert!(m.picker_filtered().is_empty());
+    }
+
+    #[test]
+    fn profile_picker_types_immediately_and_esc_clears() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut m = test_model();
+        m.mode = crate::tui::Mode::Profiles;
+        m.profiles = vec!["Cloud.dev".into(), "Cloud.prod".into(), "personal".into()];
+        // typing filters without any leading `/` (fzf-style)
+        for c in "per".chars() {
+            let k = KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+            let s = crate::tui::keymap::key_name(&k);
+            m.update_profiles(&k, &s);
+        }
+        assert_eq!(m.picker_input.value(), "per");
+        assert_eq!(m.picker_filtered(), vec!["personal".to_string()]);
+        // esc clears the query first…
+        let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        m.update_profiles(&esc, "esc");
+        assert!(m.picker_input.value().is_empty());
+        assert_eq!(m.picker_filtered().len(), 3);
+        // …and with no query + no session, esc quits
+        m.update_profiles(&esc, "esc");
+        assert!(m.should_quit());
     }
 }

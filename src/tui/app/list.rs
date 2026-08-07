@@ -4,16 +4,19 @@
 use crossterm::event::KeyEvent;
 
 use crate::inventory::{Instance, Utilization};
+use crate::resources::ResourceKind;
 
 use super::{ConfirmKind, Mode, Model, SortKey};
 
-/// Screen lines per instance row: one line of breathing room above the
-/// content line, echoing Apple HIG list density (row ≈ 2× text height).
-pub(crate) const LIST_ROW_H: usize = 2;
+/// Screen lines per instance row: compact single-line rows, k9s-style.
+pub(crate) const LIST_ROW_H: usize = 1;
 
 impl Model {
     /// Routes keys while the instance list is on screen.
     pub(super) fn update_list(&mut self, k: &KeyEvent, s: &str) {
+        if self.commanding {
+            return self.update_command(k, s);
+        }
         if self.filtering {
             return self.update_filtering(k, s);
         }
@@ -41,7 +44,7 @@ impl Model {
                 return;
             }
             "G" => {
-                let n = self.count_target(self.filtered.len());
+                let n = self.count_target(self.row_count());
                 self.jump_to(n);
                 self.g_pending = false;
                 self.count_buf.clear();
@@ -52,6 +55,12 @@ impl Model {
         // any other key cancels the motion
         self.g_pending = false;
         self.count_buf.clear();
+
+        // Non-instance views get the reduced key set (no sessions, marks,
+        // reboot or port-forward — those are EC2 concepts).
+        if self.view != ResourceKind::Instances {
+            return self.update_resource_list(s);
+        }
 
         match s {
             "q" | "ctrl+c" => self.quit = true,
@@ -125,8 +134,15 @@ impl Model {
             "/" | "f" => {
                 // reopen with the current query intact so it can be refined
                 self.filtering = true;
+                self.ensure_cursor_visible(); // the prompt box takes 3 rows
             }
+            ":" => self.open_command(),
             "esc" => {
+                // after a drill-down, esc walks back to the originating view
+                if let Some((kind, cursor)) = self.drill_from.take() {
+                    self.drill_back(kind, cursor);
+                    return;
+                }
                 if !self.filter.value().is_empty() {
                     self.filter.clear();
                     self.apply_filter();
@@ -144,7 +160,7 @@ impl Model {
                 // Refresh in place — keep the table visible; the row set
                 // updates when the reload returns.
                 self.status = "refreshing…".to_string();
-                self.spawn_load();
+                self.spawn_load_active();
             }
             "N" => self.sort_by_key(SortKey::Name),
             "S" => self.sort_by_key(SortKey::State),
@@ -169,6 +185,7 @@ impl Model {
             "enter" => {
                 // close the input; the query stays applied
                 self.filtering = false;
+                self.ensure_cursor_visible(); // the table got its rows back
             }
             _ => {
                 self.filter.handle(k);
@@ -181,13 +198,39 @@ impl Model {
     // ---- table navigation ----
 
     /// Visible data rows in the instance table for the current height.
+    /// Chrome: top panel (7) + panel border (2) + table header + rule +
+    /// bottom bar = 12 rows, plus the prompt box while it is open.
     pub(crate) fn visible_data_rows(&self) -> usize {
-        // top panel (6) + filter + table header + rule + status = 10 chrome
-        // rows, plus 2 spare rows left blank at the bottom.
-        ((self.height as usize).saturating_sub(12) / LIST_ROW_H).max(1)
+        let chrome = 12 + self.prompt_h() as usize;
+        ((self.height as usize).saturating_sub(chrome) / LIST_ROW_H).max(1)
     }
 
-    fn table_key(&mut self, s: &str) {
+    /// Height currently taken by the filter/command prompt box.
+    pub(crate) fn prompt_h(&self) -> u16 {
+        if self.filtering || self.commanding {
+            crate::tui::view::PROMPT_H
+        } else {
+            0
+        }
+    }
+
+    /// First screen row of table data — the mouse hit-testing counterpart of
+    /// view/list.rs draw_list geometry: top panel, optional prompt box, then
+    /// the panel's top border, the header row and the rule line.
+    pub(crate) fn list_data_y(&self) -> u16 {
+        crate::tui::view::HEADER_H + self.prompt_h() + 3
+    }
+
+    /// Rows of whichever table is active (drives all cursor math).
+    pub(crate) fn row_count(&self) -> usize {
+        if self.view == ResourceKind::Instances {
+            self.filtered.len()
+        } else {
+            self.res_filtered.len()
+        }
+    }
+
+    pub(super) fn table_key(&mut self, s: &str) {
         let vis = self.visible_data_rows();
         match s {
             "up" => self.cursor_up(1),
@@ -199,7 +242,7 @@ impl Model {
             "ctrl+u" => self.cursor_up(vis / 2),
             "ctrl+d" => self.cursor_down(vis / 2),
             "home" => self.table_to_top(),
-            "end" => self.jump_to(self.filtered.len()),
+            "end" => self.jump_to(self.row_count()),
             _ => {}
         }
     }
@@ -210,10 +253,10 @@ impl Model {
     }
 
     pub(super) fn cursor_down(&mut self, n: usize) {
-        if self.filtered.is_empty() {
+        if self.row_count() == 0 {
             return;
         }
-        self.cursor = (self.cursor + n.max(1)).min(self.filtered.len() - 1);
+        self.cursor = (self.cursor + n.max(1)).min(self.row_count() - 1);
         self.ensure_cursor_visible();
     }
 
@@ -231,7 +274,7 @@ impl Model {
         if self.cursor >= self.row_offset + vis {
             self.row_offset = self.cursor + 1 - vis;
         }
-        let max_off = self.filtered.len().saturating_sub(vis);
+        let max_off = self.row_count().saturating_sub(vis);
         self.row_offset = self.row_offset.min(max_off);
     }
 
@@ -247,8 +290,8 @@ impl Model {
     }
 
     /// Moves the cursor to the 1-based row n, keeping the viewport correct.
-    fn jump_to(&mut self, n: usize) {
-        let total = self.filtered.len();
+    pub(super) fn jump_to(&mut self, n: usize) {
+        let total = self.row_count();
         if total == 0 {
             return;
         }
@@ -303,7 +346,13 @@ impl Model {
             .filter(|inst| matches_term(inst, &cur))
             .cloned()
             .collect();
-        if self.cursor >= self.filtered.len() {
+        self.res_filtered = self
+            .res_all
+            .iter()
+            .filter(|row| matches_tokens(&row.cells.join(" ").to_lowercase(), &cur))
+            .cloned()
+            .collect();
+        if self.cursor >= self.row_count() {
             self.cursor = 0;
         }
         self.ensure_cursor_visible();
@@ -334,13 +383,19 @@ impl Model {
     /// the render buffer, the horizontal-scroll bound, and the blit window
     /// all agree even for pathological Name-tag widths.
     pub(crate) fn content_width(&self) -> usize {
+        if self.view != ResourceKind::Instances {
+            let w = self.res_col_widths();
+            return (w.iter().sum::<usize>() + 2 * w.len()).min(8192);
+        }
         let cols = self.columns();
         (cols.iter().map(|c| c.width).sum::<usize>() + 2 * cols.len()).min(8192)
     }
 
-    /// How far the table can scroll horizontally.
+    /// How far the table can scroll horizontally. The visible window is the
+    /// panel interior: terminal width minus the two border columns.
     fn max_h_offset(&self) -> usize {
-        self.content_width().saturating_sub(self.width as usize)
+        self.content_width()
+            .saturating_sub((self.width as usize).saturating_sub(2))
     }
 
     pub(crate) fn clamp_h_offset(&mut self) {
@@ -354,7 +409,12 @@ impl Model {
 /// containing both, in any order; a "!" prefix negates a token ("prod !db"
 /// = contains prod AND not db). An empty query matches everything.
 fn matches_term(inst: &Instance, term: &str) -> bool {
-    let hay = search_text(inst);
+    matches_tokens(&search_text(inst), term)
+}
+
+/// The token/negation matcher over a pre-lowercased haystack (shared by the
+/// instance table and the generic resource tables).
+pub(super) fn matches_tokens(hay: &str, term: &str) -> bool {
     term.to_lowercase()
         .split_whitespace()
         .all(|tok| match tok.strip_prefix('!') {
@@ -364,7 +424,8 @@ fn matches_term(inst: &Instance, term: &str) -> bool {
         })
 }
 
-/// The lowercased, space-joined haystack of an instance's fields.
+/// The lowercased, space-joined haystack of an instance's fields. Security
+/// group ids/names are included so the sg view can drill into instances.
 fn search_text(inst: &Instance) -> String {
     let mut parts = [
         inst.name.as_str(),
@@ -378,6 +439,12 @@ fn search_text(inst: &Instance) -> String {
         inst.state.as_str(),
     ]
     .join(" ");
+    // SG ids only — names are generic by convention ("web", "default") and
+    // would pollute name-based filtering; drill always navigates by id.
+    for sg in &inst.security_groups {
+        parts.push(' ');
+        parts.push_str(&sg.id);
+    }
     for (k, v) in &inst.tags {
         parts.push(' ');
         parts.push_str(k);

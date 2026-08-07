@@ -4,7 +4,10 @@
 
 mod list;
 mod overlays;
+mod resource;
 mod session;
+
+pub(crate) use list::{HEADER_H, PROMPT_H};
 
 use ratatui::Frame;
 use ratatui::style::{Color, Modifier, Style};
@@ -32,6 +35,9 @@ pub(crate) fn draw(m: &Model, f: &mut Frame) {
         Mode::Forward => {
             list::draw_list(m, f);
             overlays::draw_forward(m, f);
+        }
+        Mode::Detail if m.view != crate::resources::ResourceKind::Instances => {
+            overlays::draw_res_detail(m, f)
         }
         Mode::Detail => overlays::draw_detail(m, f),
         Mode::List => list::draw_list(m, f),

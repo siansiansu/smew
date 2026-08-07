@@ -96,9 +96,34 @@ enum Backend {
         ec2: aws_sdk_ec2::Client,
         ssm: aws_sdk_ssm::Client,
         cw: aws_sdk_cloudwatch::Client,
+        sts: aws_sdk_sts::Client,
     },
     /// Developer mode (--dev): no AWS calls; list() serves mock_instances().
     Mock,
+}
+
+/// Who the resolved credentials are (sts:GetCallerIdentity), shown in the
+/// top panel.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct CallerIdentity {
+    pub account: String,
+    pub arn: String,
+}
+
+impl CallerIdentity {
+    /// A short human label for the ARN: "RoleName/session" for assumed
+    /// roles, the final path segment ("alice") for IAM users/roles, the raw
+    /// ARN when it doesn't parse.
+    pub fn user_label(&self) -> String {
+        let Some((_, resource)) = self.arn.rsplit_once(':') else {
+            return self.arn.clone();
+        };
+        match resource.split_once('/') {
+            Some(("assumed-role", rest)) => rest.to_string(),
+            Some((_, rest)) => rest.to_string(),
+            None => resource.to_string(),
+        }
+    }
 }
 
 impl Inventory {
@@ -109,6 +134,7 @@ impl Inventory {
                 ec2: aws_sdk_ec2::Client::new(cfg),
                 ssm: aws_sdk_ssm::Client::new(cfg),
                 cw: aws_sdk_cloudwatch::Client::new(cfg),
+                sts: aws_sdk_sts::Client::new(cfg),
             },
         }
     }
@@ -119,6 +145,25 @@ impl Inventory {
         Self {
             backend: Backend::Mock,
         }
+    }
+
+    /// Resolves who the credentials are via sts:GetCallerIdentity.
+    pub async fn identity(&self) -> Result<CallerIdentity, String> {
+        let Backend::Aws { sts, .. } = &self.backend else {
+            return Ok(CallerIdentity {
+                account: "123456789012".to_string(),
+                arn: "arn:aws:sts::123456789012:assumed-role/DevRole/smew-dev".to_string(),
+            });
+        };
+        let out = sts
+            .get_caller_identity()
+            .send()
+            .await
+            .map_err(|e| aws_err(&e))?;
+        Ok(CallerIdentity {
+            account: out.account().unwrap_or_default().to_string(),
+            arn: out.arn().unwrap_or_default().to_string(),
+        })
     }
 
     /// Requests an EC2 reboot of the instance (ec2:RebootInstances).
@@ -167,6 +212,22 @@ impl Inventory {
         res.instances
             .sort_by(|a, b| (&a.name, &a.instance_id).cmp(&(&b.name, &b.instance_id)));
         res
+    }
+
+    /// Lists a non-instance resource view (volumes, security groups, …).
+    /// Same degradation contract as list(): failures become Warnings.
+    pub async fn list_resources(
+        &self,
+        kind: crate::resources::ResourceKind,
+    ) -> crate::resources::ResourceList {
+        match &self.backend {
+            Backend::Aws { ec2, .. } => crate::resources::list_aws(ec2, kind).await,
+            Backend::Mock => crate::resources::ResourceList {
+                kind,
+                rows: crate::resources::mock(kind),
+                warnings: Vec::new(),
+            },
+        }
     }
 
     /// Fetches CPU/MEM utilization for the given instances from CloudWatch.
@@ -636,6 +697,21 @@ impl From<&aws_sdk_ec2::types::Instance> for Instance {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn caller_identity_user_labels() {
+        let id = |arn: &str| CallerIdentity {
+            account: "1".into(),
+            arn: arn.into(),
+        };
+        assert_eq!(
+            id("arn:aws:sts::123:assumed-role/Admin/alex").user_label(),
+            "Admin/alex"
+        );
+        assert_eq!(id("arn:aws:iam::123:user/alice").user_label(), "alice");
+        assert_eq!(id("arn:aws:iam::123:root").user_label(), "root");
+        assert_eq!(id("not-an-arn").user_label(), "not-an-arn");
+    }
 
     // Developer mode must serve a useful offline dataset: sorted like the
     // AWS path, with both connectable and non-connectable hosts, and no-op

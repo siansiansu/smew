@@ -1,10 +1,12 @@
 //! The root model and the message loop: mode dispatch, async command
 //! spawns, and shared small helpers.
 
+mod command;
 mod forward;
 mod list;
 mod mouse;
 mod overlays;
+mod resource;
 mod run;
 
 pub use run::run;
@@ -19,7 +21,8 @@ use std::time::Duration;
 
 use crossterm::event::{KeyEvent, MouseEvent};
 
-use crate::inventory::{Instance, Inventory, ListResult, Utilization};
+use crate::inventory::{CallerIdentity, Instance, Inventory, ListResult, Utilization};
+use crate::resources::{ResourceKind, ResourceList, ResourceRow};
 use crate::session::Pane;
 use crate::session::PluginDriver;
 use crate::version;
@@ -33,7 +36,18 @@ pub enum Msg {
     Mouse(MouseEvent),
     Paste(String),
     Resize(u16, u16),
-    Loaded(ListResult),
+    /// Instance list result, stamped with the load generation it answers —
+    /// stale responses (older profile/view) are dropped.
+    Loaded {
+        generation: u64,
+        res: ListResult,
+    },
+    /// A non-instance resource view result (same staleness contract).
+    ResourceLoaded {
+        generation: u64,
+        res: ResourceList,
+    },
+    Identity(CallerIdentity),
     Utilization(HashMap<String, Utilization>),
     Version(String),
     ActionDone {
@@ -183,9 +197,27 @@ pub struct Model {
     pub(crate) driver: Option<PluginDriver>,
     pub(crate) profile: String,
     pub(crate) region: String,
+    /// Who the credentials are (sts:GetCallerIdentity), fetched async per
+    /// profile; None until it resolves (the panel shows a placeholder).
+    pub(crate) identity: Option<CallerIdentity>,
     pub(crate) last_sync: Option<chrono::DateTime<chrono::Local>>,
     pub(crate) all: Vec<Instance>,
     pub(crate) filtered: Vec<Instance>,
+
+    /// Which table the main panel shows (`:` commands switch it).
+    pub(crate) view: ResourceKind,
+    /// Rows of the active non-instance view (empty for Instances).
+    pub(crate) res_all: Vec<ResourceRow>,
+    pub(crate) res_filtered: Vec<ResourceRow>,
+    /// Which kind res_all currently holds — lets a drill-back to the same
+    /// view render the cached rows instantly instead of a blank reload.
+    pub(crate) res_kind: ResourceKind,
+    /// One-level back stack for drill-down: the (view, cursor) Enter was
+    /// pressed in; esc in the drilled ec2 view pops back to it.
+    pub(crate) drill_from: Option<(ResourceKind, usize)>,
+    /// Bumped on profile/view switches; async loads answer with the
+    /// generation they were spawned under so stale results are dropped.
+    pub(crate) load_gen: u64,
     /// Whether the %CPU/%MEM columns (and their CloudWatch polling) are on.
     pub(crate) metrics_enabled: bool,
     /// CloudWatch CPU/MEM by instance id; hosts without data show n/a.
@@ -200,16 +232,23 @@ pub struct Model {
     pub(crate) filter: Input,
     pub(crate) filtering: bool,
 
+    // `:` command mode (k9s-style prompt)
+    pub(crate) cmd: Input,
+    pub(crate) commanding: bool,
+    pub(crate) cmd_sel: usize,   // selected suggestion (↑↓ cycles)
+    pub(crate) cmd_last: String, // ↑ on an empty prompt recalls this
+
     // profile picker
     pub(crate) profiles: Vec<String>,
     pub(crate) picker_cursor: usize,
+    /// fzf-style query: typing in the picker filters immediately.
     pub(crate) picker_input: Input,
-    pub(crate) picker_typing: bool,
-    pub(crate) picker_query: String, // committed filter
 
     pub(crate) mode: Mode,
     pub(crate) overlay_scroll: usize, // detail/help vertical scroll offset
     pub(crate) detail: Instance,
+    /// The row shown by the detail overlay in non-instance views.
+    pub(crate) res_detail: ResourceRow,
     pub(crate) confirm: Instance,
     pub(crate) confirm_action: ConfirmKind,
     pub(crate) fwd: ForwardForm,
@@ -275,9 +314,16 @@ impl Model {
             driver: None,
             profile: String::new(),
             region: String::new(),
+            identity: None,
             last_sync: None,
             all: Vec::new(),
             filtered: Vec::new(),
+            view: ResourceKind::Instances,
+            res_all: Vec::new(),
+            res_filtered: Vec::new(),
+            res_kind: ResourceKind::Instances,
+            drill_from: None,
+            load_gen: 0,
             metrics_enabled: opts.metrics,
             util: HashMap::new(),
             last_util_fetch: None,
@@ -285,14 +331,17 @@ impl Model {
             row_offset: 0,
             filter: Input::default(),
             filtering: false,
+            cmd: Input::default(),
+            commanding: false,
+            cmd_sel: 0,
+            cmd_last: String::new(),
             profiles: opts.profiles,
             picker_cursor: 0,
             picker_input: Input::default(),
-            picker_typing: false,
-            picker_query: String::new(),
             mode: Mode::List,
             overlay_scroll: 0,
             detail: Instance::default(),
+            res_detail: ResourceRow::default(),
             confirm: Instance::default(),
             confirm_action: ConfirmKind::Reboot,
             fwd: ForwardForm::default(),
@@ -355,6 +404,7 @@ impl Model {
     pub fn init(&self) {
         if self.inventory.is_some() && self.mode != Mode::Profiles {
             self.spawn_load();
+            self.spawn_identity();
             self.spawn_version_check();
         }
     }
@@ -366,10 +416,63 @@ impl Model {
             return;
         };
         let tx = self.tx.clone();
+        let generation = self.load_gen;
         self.rt.spawn(async move {
             let res = inv.list().await;
-            let _ = tx.send(Msg::Loaded(res));
+            let _ = tx.send(Msg::Loaded { generation, res });
         });
+    }
+
+    /// Loads the active non-instance resource view.
+    pub(super) fn spawn_load_resources(&self) {
+        let Some(inv) = self.inventory.clone() else {
+            return;
+        };
+        let tx = self.tx.clone();
+        let kind = self.view;
+        let generation = self.load_gen;
+        self.rt.spawn(async move {
+            let res = inv.list_resources(kind).await;
+            let _ = tx.send(Msg::ResourceLoaded { generation, res });
+        });
+    }
+
+    /// Refreshes whichever view is active.
+    pub(super) fn spawn_load_active(&self) {
+        if self.view == ResourceKind::Instances {
+            self.spawn_load();
+        } else {
+            self.spawn_load_resources();
+        }
+    }
+
+    /// Switches the main panel to another resource view: bumps the load
+    /// generation (stale in-flight results get dropped), clears view state,
+    /// and fetches. Instances keeps its cached rows while refreshing, and a
+    /// return to the kind res_all still holds renders the cache instantly.
+    pub(super) fn switch_view(&mut self, kind: ResourceKind) {
+        if kind == self.view {
+            self.status.clear();
+            return;
+        }
+        self.load_gen += 1;
+        self.view = kind;
+        self.drill_from = None; // a lateral move invalidates the back path
+        if kind != ResourceKind::Instances && kind != self.res_kind {
+            self.res_all.clear();
+            self.res_kind = kind;
+        }
+        self.filter.clear();
+        self.filtering = false;
+        self.apply_filter();
+        self.table_to_top();
+        self.h_offset = 0;
+        if self.row_count() == 0 {
+            self.status = format!("loading {}…", kind.title());
+        } else {
+            self.status.clear(); // cached rows are already on screen
+        }
+        self.spawn_load_active();
     }
 
     /// Fetches CPU/MEM utilization for the listed instances. Rate-limited to
@@ -397,6 +500,21 @@ impl Model {
             // otherwise repeat in the status bar every fetch.
             let (util, _warnings) = inv.utilization(&ids).await;
             let _ = tx.send(Msg::Utilization(util));
+        });
+    }
+
+    /// Resolves the caller identity for the top panel. Best-effort: on
+    /// error the Account/User rows keep their placeholder (a credential
+    /// problem already surfaces via the list warnings).
+    pub(super) fn spawn_identity(&self) {
+        let Some(inv) = self.inventory.clone() else {
+            return;
+        };
+        let tx = self.tx.clone();
+        self.rt.spawn(async move {
+            if let Ok(id) = inv.identity().await {
+                let _ = tx.send(Msg::Identity(id));
+            }
         });
     }
 
@@ -465,12 +583,17 @@ impl Model {
                 }
             }
 
+            Msg::Identity(id) => self.identity = Some(id),
+
             Msg::Version(latest) => {
                 self.update_available = !latest.is_empty() && latest != version::VERSION;
                 self.latest_version = latest;
             }
 
-            Msg::Loaded(res) => {
+            Msg::Loaded { generation, res } => {
+                if generation != self.load_gen {
+                    return; // stale: answered an older profile/view
+                }
                 self.loading = false;
                 self.last_sync = Some(chrono::Local::now());
                 self.all = res.instances;
@@ -495,6 +618,29 @@ impl Model {
                 self.spawn_utilization();
             }
 
+            Msg::ResourceLoaded { generation, res } => {
+                if generation != self.load_gen || res.kind != self.view {
+                    return; // stale or answers a view we already left
+                }
+                self.loading = false;
+                self.last_sync = Some(chrono::Local::now());
+                self.res_kind = res.kind;
+                self.res_all = res.rows;
+                self.apply_filter();
+                self.clamp_h_offset();
+                let sso_expired = res
+                    .warnings
+                    .iter()
+                    .any(|w| crate::aws::is_sso_token_error(&w.err));
+                self.status = if sso_expired {
+                    crate::aws::sso_login_hint(&self.profile)
+                } else if let Some(w) = res.warnings.first() {
+                    format!("{}: {}", w.op, w.err)
+                } else {
+                    format!("{} {}", self.res_all.len(), self.view.title())
+                };
+            }
+
             Msg::Utilization(util) => {
                 self.util = util;
                 if matches!(self.sort_by, SortKey::Cpu | SortKey::Mem) {
@@ -512,7 +658,7 @@ impl Model {
 
             Msg::Tick => {
                 if self.mode == Mode::List && !self.loading && self.inventory.is_some() {
-                    self.spawn_load(); // silent refresh (no "Loading…")
+                    self.spawn_load_active(); // silent refresh (no "Loading…")
                 }
             }
 
@@ -527,7 +673,7 @@ impl Model {
 
             Msg::DelayedRefresh => {
                 if self.inventory.is_some() {
-                    self.spawn_load();
+                    self.spawn_load_active();
                 }
             }
 
@@ -559,9 +705,13 @@ impl Model {
                 }
                 self.session_paste(s);
             }
-            Mode::Profiles if self.picker_typing => {
+            Mode::Profiles => {
                 self.picker_input.insert_str(s);
                 self.picker_cursor = 0;
+            }
+            Mode::List if self.commanding => {
+                self.cmd.insert_str(s);
+                self.cmd_sel = 0;
             }
             Mode::List if self.filtering => {
                 self.filter.insert_str(s);

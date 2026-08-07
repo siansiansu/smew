@@ -20,7 +20,7 @@ pub(super) fn draw_profiles(m: &Model, f: &mut Frame) {
         return;
     }
     let th = theme::current();
-    let items = m.picker_filtered();
+    let items = m.picker_ranked();
 
     let mut lines: Vec<Line> = vec![pad1(Line::from(Span::styled(
         " Select AWS profile ",
@@ -30,51 +30,52 @@ pub(super) fn draw_profiles(m: &Model, f: &mut Frame) {
             .add_modifier(Modifier::BOLD),
     )))];
 
-    if m.picker_typing {
-        let (before, cur, after) = m.picker_input.render_parts();
-        lines.push(pad1(Line::from(vec![
-            Span::raw("/"),
-            Span::raw(before.to_string()),
-            Span::styled(cur, Style::new().add_modifier(Modifier::REVERSED)),
-            Span::raw(after.to_string()),
-        ])));
-    } else if !m.picker_query.is_empty() {
-        lines.push(pad1(Line::from(Span::styled(
-            format!("“{}” {} item(s)", m.picker_query, items.len()),
+    // fzf-style prompt: always live — typing filters and re-ranks at once.
+    let (before, cur, after) = m.picker_input.render_parts();
+    lines.push(pad1(Line::from(vec![
+        Span::styled("> ", Style::new().fg(th.pink).add_modifier(Modifier::BOLD)),
+        Span::raw(before.to_string()),
+        Span::styled(cur, Style::new().add_modifier(Modifier::REVERSED)),
+        Span::raw(after.to_string()),
+        Span::styled(
+            format!("   {}/{} item(s)", items.len(), m.profiles.len()),
             Style::new().dim(),
-        ))));
-    } else {
-        lines.push(pad1(Line::from(Span::styled(
-            format!("{} item(s)", items.len()),
-            Style::new().dim(),
-        ))));
-    }
+        ),
+    ])));
 
     let vis = (area.height as usize).saturating_sub(3).max(1);
     let offset = (m.picker_cursor + 1).saturating_sub(vis);
-    for (i, p) in items.iter().enumerate().skip(offset).take(vis) {
-        let num = Span::styled(format!("{:3} ", i + 1), Style::new().dim());
-        let line = if i == m.picker_cursor {
-            Line::from(vec![
-                num,
-                Span::styled(
-                    format!("▶ {p}"),
-                    Style::new().fg(th.pink).add_modifier(Modifier::BOLD),
-                ),
-            ])
+    let matched = Style::new().fg(th.orange).add_modifier(Modifier::BOLD);
+    for (i, (p, positions)) in items.iter().enumerate().skip(offset).take(vis) {
+        let selected = i == m.picker_cursor;
+        let base = if selected {
+            Style::new().fg(th.pink).add_modifier(Modifier::BOLD)
         } else {
-            Line::from(vec![num, Span::raw(format!("  {p}"))])
+            Style::new()
         };
-        lines.push(line);
+        let mut spans = vec![
+            Span::styled(format!("{:3} ", i + 1), Style::new().dim()),
+            Span::styled(if selected { "▶ " } else { "  " }, base),
+        ];
+        // fzf-style highlight: matched query chars pop in orange.
+        for (ci, ch) in p.chars().enumerate() {
+            let style = if positions.contains(&ci) {
+                matched
+            } else {
+                base
+            };
+            spans.push(Span::styled(ch.to_string(), style));
+        }
+        lines.push(Line::from(spans));
     }
     f.render_widget(Paragraph::new(lines), area);
 
     let hints = hints_line(&[
+        ("type", "filter"),
         ("↑↓", "move"),
-        ("/", "filter"),
         ("enter", "select"),
-        ("esc", "cancel"),
-        ("q", "quit"),
+        ("esc", "clear / cancel"),
+        ("ctrl+c", "quit"),
     ]);
     f.render_widget(
         Paragraph::new(pad1(hints)),
@@ -91,6 +92,16 @@ pub(super) fn draw_detail(m: &Model, f: &mut Frame) {
         m.detail_lines(),
         m.overlay_scroll,
         "s connect · ↑/↓ scroll · esc/d back · q quit",
+    );
+}
+
+/// The key/value record of the selected resource row, scrollable.
+pub(super) fn draw_res_detail(m: &Model, f: &mut Frame) {
+    scrolled_screen(
+        f,
+        m.res_detail_lines(),
+        m.overlay_scroll,
+        "↑/↓ scroll · esc/d back · q quit",
     );
 }
 
@@ -347,6 +358,29 @@ impl Model {
         );
         r(&mut lines, "ctrl+f / ctrl+b", "page down / up");
         r(&mut lines, "ctrl+d / ctrl+u", "half page down / up");
+
+        sec(&mut lines, "Commands (:)");
+        r(
+            &mut lines,
+            ":",
+            "open the command prompt (tab completes · ↑ recalls the last command)",
+        );
+        r(
+            &mut lines,
+            ":ec2 :vol :snap :sg …",
+            "switch resource view: vol snap sg vpc subnet eni eip ami (aws aliases work: ebs, sub, …)",
+        );
+        r(
+            &mut lines,
+            "enter (vpc/subnet/sg)",
+            "drill into the instances of that container · d = raw details",
+        );
+        r(
+            &mut lines,
+            ":profile [name] / :ctx",
+            "switch AWS profile (fuzzy; bare = open the picker)",
+        );
+        r(&mut lines, ":help / :q", "this help / quit");
 
         sec(&mut lines, "Filter & sort");
         r(
@@ -706,6 +740,6 @@ mod tests {
         let s = render(&m, 80, 20);
         assert!(s.contains("Select AWS profile"), "title missing:\n{s}");
         assert!(s.contains("▶ Cloud.dev"), "selection missing:\n{s}");
-        assert!(s.contains("3 item(s)"), "count missing:\n{s}");
+        assert!(s.contains("3/3 item(s)"), "count missing:\n{s}");
     }
 }

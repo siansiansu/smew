@@ -15,14 +15,7 @@ const WHEEL_STEP: usize = 3;
 /// Two clicks on the same row within this window count as a double-click.
 const DOUBLE_CLICK_MS: u128 = 400;
 
-/// First data slot of the instance table on screen. Keep in sync with the
-/// chrome rows in view/list.rs draw_list: the top panel (HEADER_H rows),
-/// the filter line, then the table at y=7 with a header and a rule line.
-/// Each data slot spans LIST_ROW_H screen lines (spacer + content), all
-/// clickable.
-const LIST_DATA_Y: u16 = 9;
-
-/// First item row of the profile picker (title + count line above).
+/// First item row of the profile picker (title + prompt line above).
 const PICKER_DATA_Y: u16 = 2;
 
 impl Model {
@@ -30,7 +23,14 @@ impl Model {
         match self.mode {
             Mode::List => self.mouse_list(me),
             Mode::Session => self.mouse_session(me),
-            Mode::Detail => self.mouse_overlay(me, self.detail_lines().len()),
+            Mode::Detail => {
+                let total = if self.view == crate::resources::ResourceKind::Instances {
+                    self.detail_lines().len()
+                } else {
+                    self.res_detail_lines().len()
+                };
+                self.mouse_overlay(me, total);
+            }
             Mode::Help => self.mouse_overlay(me, self.help_lines().len()),
             Mode::Profiles => self.mouse_profiles(me),
             Mode::Confirm => {} // keyboard-only: y / n
@@ -66,10 +66,13 @@ impl Model {
                 self.clamp_h_offset();
             }
             MouseEventKind::Down(MouseButton::Left) => {
-                if me.row < LIST_DATA_Y {
+                // Data rows start below the header/prompt/panel-border chrome
+                // (view/list.rs draw_list geometry, mirrored by list_data_y).
+                let data_y = self.list_data_y();
+                if me.row < data_y {
                     return;
                 }
-                let idx = self.row_offset + (me.row - LIST_DATA_Y) as usize / LIST_ROW_H;
+                let idx = self.row_offset + (me.row - data_y) as usize / LIST_ROW_H;
                 if idx >= self.filtered.len() {
                     return;
                 }
@@ -264,13 +267,13 @@ mod tests {
 
         // click on the 3rd visible data row (each row spans LIST_ROW_H lines;
         // its content line is the last one) selects it
-        let row3_content = LIST_DATA_Y + 3 * LIST_ROW_H as u16 - 1;
+        let data_y = m.list_data_y();
+        let row3_content = data_y + 3 * LIST_ROW_H as u16 - 1;
         let down = MouseEventKind::Down(MouseButton::Left);
         m.handle_mouse(&mouse(down, 10, row3_content));
         assert_eq!(m.cursor, 2, "click must select the row under the pointer");
-        // the spacer line above a row belongs to the same click target
-        m.handle_mouse(&mouse(down, 10, LIST_DATA_Y + 3 * LIST_ROW_H as u16));
-        assert_eq!(m.cursor, 3, "spacer lines must hit the row they pad");
+        m.handle_mouse(&mouse(down, 10, data_y + 3 * LIST_ROW_H as u16));
+        assert_eq!(m.cursor, 3, "next row slot must hit the row below");
         // clicks above the table are ignored
         m.handle_mouse(&mouse(down, 10, 0));
         assert_eq!(m.cursor, 3);

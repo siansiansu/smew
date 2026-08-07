@@ -6,17 +6,19 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 
 use super::{StateClass, classify_state, pad1, refresh_label, state_color};
 use crate::theme;
 use crate::tui::{LIST_ROW_H, Model, SortKey, age_label};
 use crate::version;
 
-const MARK_ONLINE: &str = "✓"; // reachable via SSM
+const MARK_ONLINE: &str = "Connected"; // reachable via SSM
 const MARK_OFFLINE: &str = "-"; // not reachable
-const MARK_SELECTED: &str = "✅"; // space-marked for multi-open
-const MARK_NONE: &str = "  ";
+// k9s marks rows with color, not emoji — double-width glyphs misalign in
+// some terminals.
+const MARK_SELECTED: &str = "*"; // space-marked for multi-open
+const MARK_NONE: &str = " ";
 
 const NAME_COL: usize = 3; // index of the NAME column
 const CPU_COL: usize = 7; // base index of %CPU
@@ -29,9 +31,9 @@ pub(crate) struct Column {
 }
 
 const BASE_COLUMNS: [(&str, usize); 13] = [
-    ("#", 5), // row number (serial)
-    ("", 3),  // multi-open mark (✅)
-    ("SSM", 4),
+    ("#", 5),   // row number (serial)
+    ("", 3),    // multi-open mark (✅)
+    ("SSM", 9), // fits "Connected"
     ("NAME", 34),
     ("INSTANCE-ID", 20),
     ("STATE", 14),
@@ -103,7 +105,7 @@ impl Model {
 }
 
 /// Rows of the k9s-style top panel: info block · keymap menu · logo.
-pub(crate) const HEADER_H: u16 = 6;
+pub(crate) const HEADER_H: u16 = 7;
 
 /// Keymap rows per menu column in the top panel.
 const MENU_ROWS: usize = 6;
@@ -116,8 +118,9 @@ const LOGO: [&str; 4] = [
 ];
 const LOGO_W: u16 = 29;
 
-const LIST_MENU: [(&str, &str); 11] = [
+const LIST_MENU: [(&str, &str); 12] = [
     ("↑↓", "move"),
+    (":", "command"),
     ("/", "filter"),
     ("space", "mark"),
     ("s", "connect"),
@@ -130,41 +133,150 @@ const LIST_MENU: [(&str, &str); 11] = [
     ("q", "quit"),
 ];
 
+/// The reduced menu of the non-instance resource views.
+const RES_MENU: [(&str, &str); 10] = [
+    ("↑↓", "move"),
+    (":", "command"),
+    ("/", "filter"),
+    ("enter", "drill / details"),
+    ("d", "details"),
+    ("c", "profile"),
+    ("r", "refresh"),
+    ("esc", "back to ec2"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
 pub(super) fn draw_list(m: &Model, f: &mut Frame) {
     let area = f.area();
     if area.height < 5 || area.width < 10 {
         return;
     }
-    let row = |y: u16, h: u16| {
-        Rect::new(
-            area.x,
-            area.y + y,
-            area.width,
-            h.min(area.height.saturating_sub(y)),
-        )
-    };
 
-    draw_header(m, f, row(0, HEADER_H));
-    if let Some(fl) = filter_line(m) {
-        f.render_widget(Paragraph::new(pad1(fl)), row(HEADER_H, 1));
+    draw_header(m, f, Rect::new(area.x, area.y, area.width, HEADER_H));
+
+    // k9s-style prompt box: inserted between header and panel only while
+    // active; the table reclaims the rows when it closes.
+    let mut y = HEADER_H.min(area.height);
+    if (m.filtering || m.commanding) && area.height > y + PROMPT_H {
+        draw_prompt(m, f, Rect::new(area.x, area.y + y, area.width, PROMPT_H));
+        y += PROMPT_H;
     }
 
-    let table_y = HEADER_H + 1;
-    let table_lines = m.visible_data_rows() as u16 * LIST_ROW_H as u16 + 2;
-    let table_area = row(table_y, table_lines);
-    draw_table(m, f.buffer_mut(), table_area);
+    // The framed main panel fills everything down to the bottom bar.
+    let panel_h = area.height.saturating_sub(y + 1);
+    if panel_h >= 3 {
+        draw_panel(m, f, Rect::new(area.x, area.y + y, area.width, panel_h));
+    }
 
-    let status_y = table_y + table_lines.min(area.height.saturating_sub(table_y));
-    if status_y < area.height {
-        let line = if m.filtering {
-            Line::from(Span::styled(
-                "type to filter · enter = apply · esc = clear · prefix ! to exclude",
-                Style::new().dim(),
-            ))
+    let bar_y = area.y + area.height - 1;
+    f.render_widget(
+        Paragraph::new(pad1(bottom_bar(m))),
+        Rect::new(area.x, bar_y, area.width, 1),
+    );
+}
+
+/// Height of the command/filter prompt box (border + 1 content line).
+pub(crate) const PROMPT_H: u16 = 3;
+
+/// The command/filter prompt, k9s-style: one bordered one-line box serving
+/// both modes, told apart by prefix char and border color (command = `> `
+/// accent, filter = `/ ` pink). Appears only while typing; an applied
+/// filter then lives in the panel title chip.
+fn draw_prompt(m: &Model, f: &mut Frame, area: Rect) {
+    let th = theme::current();
+    let (prefix, color, input) = if m.commanding {
+        (" > ", th.accent, &m.cmd)
+    } else {
+        (" / ", th.pink, &m.filter)
+    };
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(color).add_modifier(Modifier::BOLD));
+    let mut spans = vec![Span::styled(
+        prefix,
+        Style::new().fg(color).add_modifier(Modifier::BOLD),
+    )];
+    let (before, cur, after) = input.render_parts();
+    if input.value().is_empty() {
+        spans.push(Span::styled(
+            cur,
+            Style::new().add_modifier(Modifier::REVERSED),
+        ));
+        let hint = if m.commanding {
+            "command (tab completes · ↑ recalls): ec2 vol snap sg vpc subnet eni eip ami · profile [name] · help · quit"
         } else {
-            status_bar(m)
+            "filter (substring · space = AND · ! = exclude): name / id / ip / type / az / vpc / tag"
         };
-        f.render_widget(Paragraph::new(pad1(line)), row(status_y, 1));
+        spans.push(Span::styled(hint, Style::new().dim()));
+    } else {
+        spans.push(Span::raw(before.to_string()));
+        spans.push(Span::styled(
+            cur,
+            Style::new().add_modifier(Modifier::REVERSED),
+        ));
+        spans.push(Span::raw(after.to_string()));
+        // inline fish-style ghost: the remainder of the best suggestion
+        if m.commanding && after.is_empty() {
+            let sug = m.cmd_suggestion();
+            if !sug.is_empty() {
+                spans.push(Span::styled(sug, Style::new().fg(th.gray).dim()));
+            }
+        }
+    }
+    f.render_widget(Paragraph::new(Line::from(spans)).block(block), area);
+}
+
+/// The framed main panel: rounded bold border, k9s-style embedded title
+/// (` </query> ec2(profile)[count] `), the table blitted into the interior.
+fn draw_panel(m: &Model, f: &mut Frame, area: Rect) {
+    let th = theme::current();
+    let border = if m.mode == crate::tui::Mode::List {
+        Style::new().fg(th.accent).add_modifier(Modifier::BOLD)
+    } else {
+        // an overlay (confirm / forward form) has focus
+        Style::new().fg(th.border_unfocused)
+    };
+
+    let mut title: Vec<Span> = vec![Span::raw(" ")];
+    if !m.filter.value().is_empty() && !m.filtering {
+        title.push(Span::styled(
+            format!("</{}> ", m.filter.value()),
+            Style::new().fg(th.pink).add_modifier(Modifier::BOLD),
+        ));
+    }
+    title.push(Span::styled(
+        m.view.title(),
+        Style::new().add_modifier(Modifier::BOLD),
+    ));
+    title.push(Span::raw("("));
+    title.push(Span::styled(
+        if m.profile.is_empty() {
+            "default".to_string()
+        } else {
+            m.profile.clone()
+        },
+        Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
+    ));
+    title.push(Span::raw(")["));
+    title.push(Span::styled(
+        format!("{}", m.row_count()),
+        Style::new().fg(th.accent).add_modifier(Modifier::BOLD),
+    ));
+    title.push(Span::raw("] "));
+
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(border)
+        .title(Line::from(title).centered());
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if m.view == crate::resources::ResourceKind::Instances {
+        draw_table(m, f.buffer_mut(), inner);
+    } else {
+        super::resource::draw_res_table(m, f.buffer_mut(), inner);
     }
 }
 
@@ -177,7 +289,11 @@ fn draw_header(m: &Model, f: &mut Frame, area: Rect) {
     }
     let info = info_lines(m);
     let info_w = info.iter().map(Line::width).max().unwrap_or(0) as u16 + 1; // +1 for pad1
-    let menu = menu_lines(&LIST_MENU);
+    let menu = if m.view == crate::resources::ResourceKind::Instances {
+        menu_lines(&LIST_MENU)
+    } else {
+        menu_lines(&RES_MENU)
+    };
     let menu_w = menu.iter().map(Line::width).max().unwrap_or(0) as u16;
 
     let info_lines: Vec<Line> = info.into_iter().map(pad1).collect();
@@ -257,6 +373,12 @@ fn info_lines(m: &Model) -> Vec<Line<'static>> {
         ));
     }
 
+    // Identity rows: placeholders until sts:GetCallerIdentity resolves.
+    let (account, user) = match &m.identity {
+        Some(id) => (id.account.clone(), id.user_label()),
+        None => ("…".to_string(), "…".to_string()),
+    };
+
     vec![
         Line::from(vec![
             label("Profile:"),
@@ -268,6 +390,14 @@ fn info_lines(m: &Model) -> Vec<Line<'static>> {
                 },
                 Style::new().fg(th.cyan),
             ),
+        ]),
+        Line::from(vec![
+            label("Account:"),
+            Span::styled(account, Style::new().fg(th.accent)),
+        ]),
+        Line::from(vec![
+            label("User:"),
+            Span::styled(user, Style::new().fg(th.accent)),
         ]),
         Line::from(vec![
             label("Region:"),
@@ -289,9 +419,7 @@ fn info_lines(m: &Model) -> Vec<Line<'static>> {
                     .unwrap_or_else(|| "—".into()),
                 Style::new().fg(th.green),
             ),
-        ]),
-        Line::from(vec![
-            label("Refresh:"),
+            Span::styled(" · ", Style::new().fg(th.gray)),
             Span::styled(auto_label(m), Style::new().fg(th.orange)),
         ]),
         Line::from(version_spans),
@@ -346,56 +474,28 @@ fn counts(m: &Model) -> (usize, usize, usize, usize) {
     (m.all.len(), running, stopped, other)
 }
 
-/// Shows the filter input while typing, or the applied query afterwards.
-fn filter_line(m: &Model) -> Option<Line<'static>> {
-    if !m.filtering && m.filter.value().is_empty() {
-        return None;
-    }
-    let mut spans: Vec<Span<'static>> = vec![Span::raw("/")];
-    if m.filtering {
-        let (before, cur, after) = m.filter.render_parts();
-        if m.filter.value().is_empty() {
-            spans.push(Span::styled(
-                cur,
-                Style::new().add_modifier(Modifier::REVERSED),
-            ));
-            spans.push(Span::styled(
-                "filter (substring · space = AND · ! = exclude): name / id / ip / type / az / vpc / tag",
-                Style::new().dim(),
-            ));
-        } else {
-            spans.push(Span::raw(before.to_string()));
-            spans.push(Span::styled(
-                cur,
-                Style::new().add_modifier(Modifier::REVERSED),
-            ));
-            spans.push(Span::raw(after.to_string()));
-        }
-    } else {
-        spans.push(Span::raw(m.filter.value().to_string()));
-        spans.push(Span::raw(format!(
-            "   ({}/{} · esc clears)",
-            m.filtered.len(),
-            m.all.len()
-        )));
-    }
-    Some(Line::from(spans))
-}
-
-/// The bottom status bar: the filtered count, transient mode indicators
-/// (adding pane, horizontal scroll, goto), and the last status message.
-fn status_bar(m: &Model) -> Line<'static> {
+/// The bottom bar, k9s crumbs-style: the view chip on the left, then
+/// transient mode indicators (adding pane, horizontal scroll, goto) and the
+/// last status/flash message.
+fn bottom_bar(m: &Model) -> Line<'static> {
     let th = theme::current();
     let label = Style::new().fg(th.gray);
-    let sep = Span::styled("  │  ", label);
-    let mut spans = vec![
-        Span::styled("Found ", label),
-        Span::styled(
-            format!("{}", m.filtered.len()),
-            Style::new().add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" instances", label),
-    ];
+    let mut spans = vec![Span::styled(
+        format!(" <{}> ", m.view.title()),
+        Style::new()
+            .fg(th.title_fg)
+            .bg(th.title_bg)
+            .add_modifier(Modifier::BOLD),
+    )];
+    let sep = Span::raw("  ");
+    if m.filtering {
+        spans.push(sep);
+        spans.push(Span::styled(
+            "enter = apply · esc = clear",
+            Style::new().dim(),
+        ));
+        return Line::from(spans);
+    }
     if m.adding_pane {
         spans.push(sep.clone());
         spans.push(Span::styled(
@@ -414,6 +514,8 @@ fn status_bar(m: &Model) -> Line<'static> {
             Style::new().fg(th.orange),
         ));
     }
+    // Status goes last: on overflow it truncates first — the chip and the
+    // mode indicators are never sacrificed to a long message.
     if !m.status.is_empty() {
         spans.push(sep);
         spans.push(Span::styled(m.status.clone(), Style::new().fg(th.red)));
@@ -542,6 +644,8 @@ fn draw_table(m: &Model, dst: &mut Buffer, area: Rect) {
             let cell_style = match *ci {
                 CPU_COL => pct_style(u.cpu, row_style),
                 MEM_COL => pct_style(u.mem, row_style),
+                // the multi-open mark keeps its color on the selected row
+                1 => row_style.fg(th.cyan).add_modifier(Modifier::BOLD),
                 _ if selected => row_style,
                 2 if inst.is_connectable() => Style::new().fg(th.green),
                 2 => Style::new().fg(th.gray),
@@ -576,7 +680,10 @@ mod tests {
         assert!(s.contains("INSTANCE-ID"), "header missing:\n{s}");
         assert!(s.contains("web-prod-01"), "row missing:\n{s}");
         assert!(s.contains("i-0bbb2222"), "row missing:\n{s}");
-        assert!(s.contains("Found 2 instances"), "status bar missing:\n{s}");
+        // framed panel: k9s-style title + rounded border + crumbs chip
+        assert!(s.contains("ec2(default)["), "panel title missing:\n{s}");
+        assert!(s.contains("╭"), "panel border missing:\n{s}");
+        assert!(s.contains("<ec2>"), "crumbs chip missing:\n{s}");
         // top panel: info block, keymap menu, logo
         assert!(s.contains("Region:"), "info label missing:\n{s}");
         assert!(s.contains("ap-northeast-1"), "region value missing:\n{s}");
@@ -586,6 +693,21 @@ mod tests {
         assert!(s.contains("connect"), "keymap menu missing:\n{s}");
         assert!(s.contains("port-forward"), "keymap menu missing:\n{s}");
         assert!(s.contains(r"\_/\_/"), "logo missing:\n{s}");
+    }
+
+    #[test]
+    fn renders_identity_rows() {
+        let mut m = listed_model();
+        // placeholder before STS resolves
+        let s = render(&m, 120, 30);
+        assert!(s.contains("Account:"), "account label missing:\n{s}");
+        m.identity = Some(crate::inventory::CallerIdentity {
+            account: "111122223333".to_string(),
+            arn: "arn:aws:sts::111122223333:assumed-role/Admin/alex".to_string(),
+        });
+        let s = render(&m, 120, 30);
+        assert!(s.contains("111122223333"), "account id missing:\n{s}");
+        assert!(s.contains("Admin/alex"), "user label missing:\n{s}");
     }
 
     #[test]
@@ -638,17 +760,30 @@ mod tests {
     }
 
     #[test]
-    fn renders_filter_line_and_marks() {
+    fn renders_filter_chip_and_marks() {
         let mut m = listed_model();
         m.filter.insert_str("prod");
         m.marked.insert("i-0aaa1111".to_string());
         m.apply_filter();
         let s = render(&m, 120, 30);
-        assert!(s.contains("/prod"), "filter line missing:\n{s}");
+        // applied filter lives in the panel title chip with the count
+        assert!(s.contains("</prod>"), "filter chip missing:\n{s}");
         assert!(
-            s.contains("(1/2 · esc clears)"),
-            "filter count missing:\n{s}"
+            s.contains("ec2(default)[1]"),
+            "filtered count missing:\n{s}"
         );
-        assert!(s.contains("✅"), "mark missing:\n{s}");
+        assert!(s.contains('*'), "mark missing:\n{s}");
+    }
+
+    #[test]
+    fn renders_prompt_box_while_filtering() {
+        let mut m = listed_model();
+        m.filtering = true;
+        m.filter.insert_str("web");
+        m.apply_filter();
+        let s = render(&m, 120, 30);
+        assert!(s.contains("/ web"), "prompt content missing:\n{s}");
+        // while typing the title shows no chip yet
+        assert!(!s.contains("</web>"), "chip must wait for apply:\n{s}");
     }
 }
