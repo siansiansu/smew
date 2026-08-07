@@ -3,3 +3,6 @@
 /target
 IMPLEMENTATION_PLAN.md
 references
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
