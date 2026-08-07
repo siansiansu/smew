@@ -190,9 +190,13 @@ async fn run_dry_run(profile: &str, region: &str) {
             std::process::exit(1);
         }
     };
+    let mut sso_expired = false;
     match aws::identity(&cfg).await {
         Ok(id) => println!("caller identity: {id}"),
-        Err(e) => println!("caller identity: ERROR: {e}"),
+        Err(e) => {
+            sso_expired |= aws::is_sso_token_error(&e);
+            println!("caller identity: ERROR: {e}");
+        }
     }
     println!("region:          {}\n", aws::region_of(&cfg));
 
@@ -241,7 +245,11 @@ async fn run_dry_run(profile: &str, region: &str) {
 
     println!("\n{} instances", res.instances.len());
     for warn in &res.warnings {
+        sso_expired |= aws::is_sso_token_error(&warn.err);
         println!("WARNING {}: {}", warn.op, warn.err);
+    }
+    if sso_expired {
+        println!("{}", aws::sso_login_hint(profile));
     }
 }
 

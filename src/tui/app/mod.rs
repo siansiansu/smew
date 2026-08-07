@@ -393,7 +393,13 @@ impl Model {
                 self.name_width = max_name_width(&self.all);
                 self.sort_all();
                 self.clamp_h_offset();
-                self.status = if warnings > 0 {
+                let sso_expired = res
+                    .warnings
+                    .iter()
+                    .any(|w| crate::aws::is_sso_token_error(&w.err));
+                self.status = if sso_expired {
+                    crate::aws::sso_login_hint(&self.profile)
+                } else if warnings > 0 {
                     format!(
                         "{} instances · {warnings} warning(s) — some detail unavailable (permissions)",
                         self.all.len()

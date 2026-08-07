@@ -46,6 +46,25 @@ pub async fn identity(cfg: &SdkConfig) -> Result<String, String> {
     ))
 }
 
+/// Whether an error message indicates an expired or missing SSO token.
+/// aws-config's SsoTokenProviderError variants all render with the phrase
+/// "SSO token" ("the SSO token has expired and cannot be refreshed",
+/// "failed to load the cached SSO token", "… cached SSO token file"), and
+/// DisplayErrorContext includes the full cause chain in our messages.
+pub fn is_sso_token_error(msg: &str) -> bool {
+    msg.to_ascii_lowercase().contains("sso token")
+}
+
+/// An actionable re-login hint for an SSO token error. An empty profile
+/// defers to the CLI's default profile resolution.
+pub fn sso_login_hint(profile: &str) -> String {
+    if profile.is_empty() {
+        "AWS SSO session expired or missing — run: aws sso login".to_string()
+    } else {
+        format!("AWS SSO session expired or missing — run: aws sso login --profile {profile}")
+    }
+}
+
 /// Enumerates the AWS profiles available on this machine by parsing the
 /// shared config and credentials files directly — the same profiles the aws
 /// CLI would see. It never makes a network call or uses credentials.
@@ -138,6 +157,35 @@ mod tests {
 
         let got = profiles_from(&cfg, &creds);
         assert_eq!(got, vec!["default", "legacy", "prod", "staging"]);
+    }
+
+    #[test]
+    fn detects_sso_token_errors() {
+        // The three messages aws-config 1.8 actually emits.
+        assert!(is_sso_token_error(
+            "the SSO token has expired and cannot be refreshed"
+        ));
+        assert!(is_sso_token_error("failed to load the cached SSO token"));
+        assert!(is_sso_token_error("invalid JSON in cached SSO token file"));
+        // Wrapped in a DisplayErrorContext-style cause chain.
+        assert!(is_sso_token_error(
+            "dispatch failure: other: failed to load the cached SSO token: token file does not exist"
+        ));
+        assert!(!is_sso_token_error(
+            "AccessDenied: not authorized to perform ec2:DescribeInstances"
+        ));
+    }
+
+    #[test]
+    fn sso_hint_includes_profile() {
+        assert_eq!(
+            sso_login_hint(""),
+            "AWS SSO session expired or missing — run: aws sso login"
+        );
+        assert_eq!(
+            sso_login_hint("prod"),
+            "AWS SSO session expired or missing — run: aws sso login --profile prod"
+        );
     }
 
     #[test]
