@@ -5,10 +5,20 @@ version = "1.0.0"
 edition = "2024"
 description = "Local AWS SSM connection tool: interactive inventory browser + iTerm2-like multiplexing/broadcast"
 license = "MIT"
+repository = "https://github.com/siansiansu/skua"
+homepage = "https://siansiansu.github.io/skua/"
+readme = "README.md"
+keywords = ["aws", "ssm", "tui", "session-manager", "terminal"]
+categories = ["command-line-utilities"]
 
 [profile.release]
 lto = "thin"
 strip = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
 
 [dev-dependencies]
 tempfile = "3"
