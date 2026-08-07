@@ -35,6 +35,11 @@ pub struct Config {
     /// Color theme: a built-in name (default, dracula, gruvbox-dark, nord)
     /// or a file in ~/.config/smew/skins/<name>.yaml. Empty means default.
     pub skin: String,
+    /// Shows %CPU/%MEM columns fed from CloudWatch (GetMetricStatistics /
+    /// ListMetrics — free-tier-eligible APIs, polled every 5 minutes).
+    /// Default false: the columns are hidden and smew never calls
+    /// CloudWatch at all.
+    pub metrics: bool,
 }
 
 impl Config {

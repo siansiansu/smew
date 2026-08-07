@@ -135,6 +135,8 @@ fn main() {
         leader: cfg.leader().to_string(),
         version_param: cfg.version_param_name().to_string(),
         mouse: cfg.mouse_enabled(),
+        // Dev mode always shows the metrics columns — the mock data is free.
+        metrics: cfg.metrics || cli.dev,
         rt: rt.handle().clone(),
     };
     if let Err(e) = tui::run(opts) {

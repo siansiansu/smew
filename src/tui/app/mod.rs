@@ -167,6 +167,9 @@ pub struct Options {
     pub leader: String,
     pub version_param: String,
     pub mouse: bool,
+    /// Enables the %CPU/%MEM columns (CloudWatch polling). Off = no
+    /// CloudWatch calls at all and the columns are hidden.
+    pub metrics: bool,
     pub rt: tokio::runtime::Handle,
 }
 
@@ -183,6 +186,8 @@ pub struct Model {
     pub(crate) last_sync: Option<chrono::DateTime<chrono::Local>>,
     pub(crate) all: Vec<Instance>,
     pub(crate) filtered: Vec<Instance>,
+    /// Whether the %CPU/%MEM columns (and their CloudWatch polling) are on.
+    pub(crate) metrics_enabled: bool,
     /// CloudWatch CPU/MEM by instance id; hosts without data show n/a.
     pub(crate) util: HashMap<String, Utilization>,
     /// When utilization was last fetched (rate-limits the CloudWatch calls).
@@ -273,6 +278,7 @@ impl Model {
             last_sync: None,
             all: Vec::new(),
             filtered: Vec::new(),
+            metrics_enabled: opts.metrics,
             util: HashMap::new(),
             last_util_fetch: None,
             cursor: 0,
@@ -366,13 +372,13 @@ impl Model {
         });
     }
 
-    /// Fetches CPU/MEM utilization for the listed instances. Rate-limited:
-    /// CloudWatch bills GetMetricData per metric and the data only moves at
-    /// 5-minute resolution, so refreshing faster than this buys nothing
-    /// (k9s likewise caches metrics for 60s under a faster list refresh).
+    /// Fetches CPU/MEM utilization for the listed instances. Rate-limited to
+    /// the metric's own 5-minute resolution: polling faster returns the same
+    /// datapoint while spending free-tier API requests for nothing.
     fn spawn_utilization(&mut self) {
-        const UTIL_MIN_INTERVAL: Duration = Duration::from_secs(60);
-        if self.all.is_empty()
+        const UTIL_MIN_INTERVAL: Duration = Duration::from_secs(300);
+        if !self.metrics_enabled
+            || self.all.is_empty()
             || self
                 .last_util_fetch
                 .is_some_and(|t| t.elapsed() < UTIL_MIN_INTERVAL)
@@ -627,6 +633,7 @@ pub(crate) fn test_model() -> Model {
             leader: "ctrl+b".to_string(),
             version_param: String::new(),
             mouse: true,
+            metrics: true, // view tests exercise the %CPU/%MEM columns
             rt: rt.handle().clone(),
         },
         tx,

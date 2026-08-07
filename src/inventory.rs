@@ -272,14 +272,16 @@ const MEM_METRIC_NAMES: [&str; 2] = ["mem_used_percent", "Memory % Committed Byt
 /// CPU comes from AWS/EC2 CPUUtilization (always published). Memory only
 /// exists when the CloudWatch agent runs on the host, and its dimension set
 /// varies with the agent's append_dimensions config — so discover the exact
-/// metrics via ListMetrics first, then batch everything into GetMetricData.
+/// metrics via ListMetrics first, then read each one.
+///
+/// Reads use GetMetricStatistics, NOT GetMetricData: GetMetricData is billed
+/// per metric on every call and is excluded from the always-free tier, while
+/// GetMetricStatistics/ListMetrics count against the free 1M requests/month.
 async fn utilization_aws(
     cw: &aws_sdk_cloudwatch::Client,
     ids: &[String],
 ) -> (HashMap<String, Utilization>, Vec<Warning>) {
-    use aws_sdk_cloudwatch::types::{
-        Dimension, DimensionFilter, Metric, MetricDataQuery, MetricStat, ScanBy,
-    };
+    use aws_sdk_cloudwatch::types::{Dimension, DimensionFilter, Metric};
 
     let mut warnings = Vec::new();
     let mut util: HashMap<String, Utilization> = HashMap::new();
@@ -332,9 +334,10 @@ async fn utilization_aws(
         }
     }
 
-    // One query per metric; the query id ("c3"/"m3") encodes kind + index.
-    let mut queries = Vec::new();
-    for (i, id) in ids.iter().enumerate() {
+    // One GetMetricStatistics call per metric (CPU always, MEM if the agent
+    // publishes it).
+    let mut jobs: Vec<(String, bool, Metric)> = Vec::new();
+    for id in ids {
         let cpu = Metric::builder()
             .namespace("AWS/EC2")
             .metric_name("CPUUtilization")
@@ -345,63 +348,70 @@ async fn utilization_aws(
                     .build(),
             )
             .build();
-        queries.push((format!("c{i}"), cpu));
+        jobs.push((id.clone(), false, cpu));
         if let Some(m) = mem_metrics.get(id) {
-            queries.push((format!("m{i}"), m.clone()));
+            jobs.push((id.clone(), true, m.clone()));
         }
     }
 
-    // GetMetricData accepts up to 500 queries per call; ask for the last 10
-    // minutes at 5-minute resolution and keep the newest datapoint.
+    // Ask for the last 10 minutes at 5-minute resolution and keep the newest
+    // datapoint. Calls run 8 at a time — polite to the API rate limit but
+    // not serially slow on big fleets.
     let end = std::time::SystemTime::now();
     let start = end - std::time::Duration::from_secs(600);
-    for chunk in queries.chunks(500) {
-        let mut req = cw
-            .get_metric_data()
-            .start_time(start.into())
-            .end_time(end.into())
-            .scan_by(ScanBy::TimestampDescending);
-        for (qid, metric) in chunk {
-            req = req.metric_data_queries(
-                MetricDataQuery::builder()
-                    .id(qid.clone())
-                    .metric_stat(
-                        MetricStat::builder()
-                            .metric(metric.clone())
-                            .period(300)
-                            .stat("Average")
-                            .build(),
-                    )
-                    .build(),
-            );
+    for chunk in jobs.chunks(8) {
+        let mut set = tokio::task::JoinSet::new();
+        for (id, is_mem, metric) in chunk.iter().cloned() {
+            let cw = cw.clone();
+            set.spawn(async move {
+                let res = cw
+                    .get_metric_statistics()
+                    .namespace(metric.namespace().unwrap_or_default())
+                    .metric_name(metric.metric_name().unwrap_or_default())
+                    .set_dimensions(Some(metric.dimensions().to_vec()))
+                    .start_time(start.into())
+                    .end_time(end.into())
+                    .period(300)
+                    .statistics(aws_sdk_cloudwatch::types::Statistic::Average)
+                    .send()
+                    .await;
+                (id, is_mem, res)
+            });
         }
-        let mut pages = req.into_paginator().send();
-        while let Some(page) = pages.next().await {
-            let page = match page {
-                Ok(p) => p,
+        while let Some(joined) = set.join_next().await {
+            let Ok((id, is_mem, res)) = joined else {
+                continue;
+            };
+            let out = match res {
+                Ok(o) => o,
                 Err(e) => {
-                    warnings.push(Warning {
-                        op: "cloudwatch:GetMetricData",
-                        err: aws_err(&e),
-                    });
-                    break;
+                    // One warning is enough — a denied permission would
+                    // otherwise repeat per instance.
+                    if !warnings
+                        .iter()
+                        .any(|w| w.op == "cloudwatch:GetMetricStatistics")
+                    {
+                        warnings.push(Warning {
+                            op: "cloudwatch:GetMetricStatistics",
+                            err: aws_err(&e),
+                        });
+                    }
+                    continue;
                 }
             };
-            for r in page.metric_data_results() {
-                let qid = r.id().unwrap_or_default();
-                let Some(v) = r.values().first().copied() else {
-                    continue; // no datapoints (e.g. stopped instance)
-                };
-                let Ok(i) = qid[1..].parse::<usize>() else {
-                    continue;
-                };
-                let Some(id) = ids.get(i) else { continue };
-                let u = util.entry(id.clone()).or_default();
-                match &qid[..1] {
-                    "c" => u.cpu = Some(v),
-                    "m" => u.mem = Some(v),
-                    _ => {}
-                }
+            let latest = out
+                .datapoints()
+                .iter()
+                .max_by_key(|d| d.timestamp().map(|t| t.secs()))
+                .and_then(|d| d.average());
+            let Some(v) = latest else {
+                continue; // no datapoints (e.g. stopped instance)
+            };
+            let u = util.entry(id).or_default();
+            if is_mem {
+                u.mem = Some(v);
+            } else {
+                u.cpu = Some(v);
             }
         }
     }

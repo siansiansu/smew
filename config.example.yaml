@@ -37,3 +37,10 @@ disable_version_check: false
 # custom skin at ~/.config/smew/skins/<name>.yaml. The skins/ directory in
 # the repo has copyable examples. Empty means the default theme.
 skin: ""
+
+# %CPU / %MEM columns fed from CloudWatch, refreshed every 5 minutes.
+# Uses only free-tier-eligible APIs (GetMetricStatistics + ListMetrics,
+# within the always-free 1M requests/month). Memory needs the CloudWatch
+# agent on the hosts; without it that cell shows "n/a". Default false —
+# when off, smew makes no CloudWatch calls at all.
+metrics: false

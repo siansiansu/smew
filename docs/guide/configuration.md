@@ -33,6 +33,12 @@ disable_version_check: false
 # Color theme: a built-in name (default, dracula, gruvbox-dark, nord) or a
 # custom skin at ~/.config/smew/skins/<name>.yaml.
 skin: ""
+
+# %CPU / %MEM columns fed from CloudWatch, refreshed every 5 minutes.
+# Only free-tier-eligible APIs (GetMetricStatistics + ListMetrics). Memory
+# needs the CloudWatch agent on the hosts ("n/a" without it). Default
+# false — when off, smew makes no CloudWatch calls at all.
+metrics: false
 ```
 
 A commented copy ships as

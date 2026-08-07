@@ -19,6 +19,8 @@ const MARK_SELECTED: &str = "✅"; // space-marked for multi-open
 const MARK_NONE: &str = "  ";
 
 const NAME_COL: usize = 3; // index of the NAME column
+const CPU_COL: usize = 7; // base index of %CPU
+const MEM_COL: usize = 8; // base index of %MEM
 const PCT_W: usize = 6; // %CPU/%MEM column width (fits "100" + sort arrow)
 
 pub(crate) struct Column {
@@ -47,9 +49,13 @@ impl Model {
     /// name (never truncated) but flexes wider to fill the terminal; when
     /// names exceed the width the table scrolls horizontally instead.
     pub(crate) fn columns(&self) -> Vec<Column> {
+        // With metrics off the %CPU/%MEM columns disappear entirely
+        // (k9s-style: no metrics source → no columns, not a dead n/a pair).
         let mut cols: Vec<Column> = BASE_COLUMNS
             .iter()
-            .map(|(t, w)| Column {
+            .enumerate()
+            .filter(|(i, _)| self.metrics_enabled || (*i != CPU_COL && *i != MEM_COL))
+            .map(|(_, (t, w))| Column {
                 title: t.to_string(),
                 width: *w,
             })
@@ -74,14 +80,21 @@ impl Model {
         }
         cols[NAME_COL].width = name_w;
 
-        let idx = match self.sort_by {
+        let base = match self.sort_by {
             SortKey::Name => 3,
             SortKey::State => 5,
             SortKey::Type => 6,
-            SortKey::Cpu => 7,
-            SortKey::Mem => 8,
+            SortKey::Cpu => CPU_COL,
+            SortKey::Mem => MEM_COL,
             SortKey::Launch => 9,
             SortKey::Ip => 11,
+        };
+        // Positions past the hidden %CPU/%MEM shift left by two (sorting by
+        // cpu/mem itself is unreachable with metrics off — keys are guarded).
+        let idx = if self.metrics_enabled || base < CPU_COL {
+            base
+        } else {
+            base - 2
         };
         let arrow = if self.sort_asc { " ↑" } else { " ↓" };
         cols[idx].title.push_str(arrow);
@@ -485,40 +498,50 @@ fn draw_table(m: &Model, dst: &mut Buffer, area: Rect) {
             }
         }
         let u = m.util.get(&inst.instance_id).copied().unwrap_or_default();
-        let cells: [String; 13] = [
-            format!("{}", idx + 1),
-            if m.marked.contains(&inst.instance_id) {
-                MARK_SELECTED
-            } else {
-                MARK_NONE
-            }
-            .into(),
-            if inst.is_connectable() {
-                MARK_ONLINE
-            } else {
-                MARK_OFFLINE
-            }
-            .into(),
-            inst.name.clone(),
-            inst.instance_id.clone(),
-            inst.state.clone(),
-            inst.instance_type.clone(),
-            pct_label(u.cpu),
-            pct_label(u.mem),
-            age_label(inst.launch_time),
-            inst.az.clone(),
-            inst.private_ip.clone(),
-            inst.vpc_id.clone(),
+        // Cells carry their BASE_COLUMNS index so they stay paired with the
+        // visible columns whether or not %CPU/%MEM are shown.
+        let mut cells: Vec<(usize, String)> = vec![
+            (0, format!("{}", idx + 1)),
+            (
+                1,
+                if m.marked.contains(&inst.instance_id) {
+                    MARK_SELECTED
+                } else {
+                    MARK_NONE
+                }
+                .into(),
+            ),
+            (
+                2,
+                if inst.is_connectable() {
+                    MARK_ONLINE
+                } else {
+                    MARK_OFFLINE
+                }
+                .into(),
+            ),
+            (3, inst.name.clone()),
+            (4, inst.instance_id.clone()),
+            (5, inst.state.clone()),
+            (6, inst.instance_type.clone()),
         ];
+        if m.metrics_enabled {
+            cells.push((CPU_COL, pct_label(u.cpu)));
+            cells.push((MEM_COL, pct_label(u.mem)));
+        }
+        cells.extend([
+            (9, age_label(inst.launch_time)),
+            (10, inst.az.clone()),
+            (11, inst.private_ip.clone()),
+            (12, inst.vpc_id.clone()),
+        ]);
         let mut x = 0u16;
-        for (ci, (c, cell)) in cols.iter().zip(cells.iter()).enumerate() {
+        for ((ci, cell), c) in cells.iter().zip(cols.iter()) {
             // SSM/STATE keep their status color on unselected rows; %CPU/%MEM
             // highlight k9s-style when hot even on the selected row.
-            let cell_style = match ci {
-                7 | 8 => {
-                    let v = if ci == 7 { u.cpu } else { u.mem };
-                    pct_style(v, row_style)
-                }
+            let cell_style = match *ci {
+                CPU_COL => pct_style(u.cpu, row_style),
+                MEM_COL => pct_style(u.mem, row_style),
                 _ if selected => row_style,
                 2 if inst.is_connectable() => Style::new().fg(th.green),
                 2 => Style::new().fg(th.gray),
@@ -590,6 +613,17 @@ mod tests {
         assert!(s.contains("42"), "mem value missing:\n{s}");
         // the host without metrics shows the placeholder
         assert!(s.contains("n/a"), "n/a placeholder missing:\n{s}");
+    }
+
+    #[test]
+    fn metrics_off_hides_columns() {
+        let mut m = listed_model();
+        m.metrics_enabled = false;
+        let s = render(&m, 120, 30);
+        assert!(!s.contains("%CPU"), "%CPU must be hidden:\n{s}");
+        assert!(!s.contains("n/a"), "no placeholder cells either:\n{s}");
+        assert!(s.contains("NAME ↑"), "sort arrow must survive:\n{s}");
+        assert!(s.contains("AGE"), "later columns must survive:\n{s}");
     }
 
     #[test]
