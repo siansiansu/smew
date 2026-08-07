@@ -3,6 +3,7 @@
 
 pub mod aws;
 pub mod config;
+pub mod fuzzy;
 pub mod inventory;
 pub mod session;
 pub mod theme;
