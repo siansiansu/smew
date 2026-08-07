@@ -36,7 +36,7 @@ _skua() {
       ;;
   esac
 
-  COMPREPLY=($(compgen -W "--profile --region --dry-run -h --help" -- "$cur"))
+  COMPREPLY=($(compgen -W "--profile --region --dry-run --dev -h --help" -- "$cur"))
 }
 
 complete -F _skua skua

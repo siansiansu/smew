@@ -63,6 +63,7 @@ Prebuilt binaries for macOS / Linux (x86_64 + arm64) are on the
 skua                                        # opens the profile picker
 skua --profile prod --region ap-northeast-1
 skua --dry-run --profile prod               # inventory check, no TTY
+skua --dev                                  # mock inventory + local-shell sessions, no AWS
 ```
 
 To build from source: `cargo build --release` (Rust 1.90+) →

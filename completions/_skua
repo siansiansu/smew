@@ -40,6 +40,7 @@ _skua() {
     '--profile[AWS profile]:profile:_skua_profiles' \
     '--region[AWS region]:region:_skua_regions' \
     '--dry-run[print identity + inventory and exit (no TUI)]' \
+    '--dev[developer mode: mock inventory + local-shell sessions, no AWS]' \
     '(-h --help)'{-h,--help}'[show help]'
 }
 

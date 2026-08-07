@@ -20,6 +20,10 @@ struct Cli {
     /// Print resolved identity + inventory as a table and exit (no TUI)
     #[arg(long)]
     dry_run: bool,
+    /// Developer mode: mock inventory + local-shell sessions, no AWS access
+    /// (for developing/demoing the TUI offline)
+    #[arg(long)]
+    dev: bool,
     /// Print an ~/.ssh/config block for ssh/scp over SSM and exit
     #[arg(long)]
     ssh_config: bool,
@@ -74,7 +78,7 @@ fn main() {
     }
 
     if cli.dry_run {
-        rt.block_on(run_dry_run(&profile, &region));
+        rt.block_on(run_dry_run(&profile, &region, cli.dev));
         return;
     }
 
@@ -89,8 +93,17 @@ fn main() {
     }
 
     // build resolves a profile to a fresh inventory client + session driver,
-    // so the TUI can switch AWS profiles at runtime.
-    let build: tui::BuildFn = {
+    // so the TUI can switch AWS profiles at runtime. Developer mode resolves
+    // every profile to the mock backend — switching always succeeds offline.
+    let build: tui::BuildFn = if cli.dev {
+        Box::new(|_prof: &str| {
+            Ok((
+                inventory::Inventory::mock(),
+                PluginDriver::dev(),
+                "local".to_string(),
+            ))
+        })
+    } else {
         let handle = rt.handle().clone();
         let region = region.clone();
         Box::new(move |prof: &str| {
@@ -104,10 +117,20 @@ fn main() {
         })
     };
 
+    // Fake profiles in dev mode so the picker/switching flows are testable.
+    let (profiles, initial_profile) = if cli.dev {
+        (
+            ["dev", "dev-staging", "dev-prod"].map(String::from).into(),
+            "dev".to_string(),
+        )
+    } else {
+        (aws::profiles(), profile)
+    };
+
     let opts = tui::Options {
         build,
-        profiles: aws::profiles(),
-        initial_profile: profile,
+        profiles,
+        initial_profile,
         refresh: cfg.refresh_interval(),
         leader: cfg.leader().to_string(),
         version_param: cfg.version_param_name().to_string(),
@@ -192,25 +215,31 @@ fn default_pub_key() -> String {
 
 /// Prints caller identity and the full enriched inventory as an aligned table
 /// (wide-table fields), so inventory logic can be verified without a TTY.
-async fn run_dry_run(profile: &str, region: &str) {
-    let cfg = match aws::load(profile, region).await {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("failed to load AWS config: {e}");
-            std::process::exit(1);
-        }
-    };
+/// In developer mode the mock inventory is printed with no AWS calls.
+async fn run_dry_run(profile: &str, region: &str, dev: bool) {
     let mut sso_expired = false;
-    match aws::identity(&cfg).await {
-        Ok(id) => println!("caller identity: {id}"),
-        Err(e) => {
-            sso_expired |= aws::is_sso_token_error(&e);
-            println!("caller identity: ERROR: {e}");
+    let inv = if dev {
+        println!("caller identity: developer mode (mock inventory, no AWS calls)");
+        println!("region:          local\n");
+        inventory::Inventory::mock()
+    } else {
+        let cfg = match aws::load(profile, region).await {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                eprintln!("failed to load AWS config: {e}");
+                std::process::exit(1);
+            }
+        };
+        match aws::identity(&cfg).await {
+            Ok(id) => println!("caller identity: {id}"),
+            Err(e) => {
+                sso_expired |= aws::is_sso_token_error(&e);
+                println!("caller identity: ERROR: {e}");
+            }
         }
-    }
-    println!("region:          {}\n", aws::region_of(&cfg));
-
-    let inv = inventory::Inventory::new(&cfg);
+        println!("region:          {}\n", aws::region_of(&cfg));
+        inventory::Inventory::new(&cfg)
+    };
     let res = inv.list().await;
 
     let mut rows: Vec<Vec<String>> = vec![

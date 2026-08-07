@@ -6,11 +6,17 @@
 skua                                        # opens the AWS profile picker
 skua --profile prod --region ap-northeast-1 # skip the picker
 skua --dry-run --profile prod               # print inventory as a table, no TUI
+skua --dev                                  # developer mode: no AWS needed
 ```
 
 With no flags, skua lists the profiles from `~/.aws/config` — pick one and it
 loads the region's EC2 inventory with live SSM reachability (🟢 reachable /
 🔴 not).
+
+`--dev` runs the whole TUI against a built-in mock inventory: no credentials,
+no network. "Sessions" open your local shell in the panes, so filtering,
+multi-pane broadcast, port-forward forms and every keybinding can be tried
+(or demoed) offline. Combine with `--dry-run` to print the mock table.
 
 ## Browse the inventory
 

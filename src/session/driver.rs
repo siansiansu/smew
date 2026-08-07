@@ -15,6 +15,8 @@ pub struct SshOptions {
 pub struct PluginDriver {
     profile: String,
     region: String,
+    /// Developer mode: session/forward argv runs locally instead of aws.
+    dev: bool,
 }
 
 impl PluginDriver {
@@ -24,6 +26,19 @@ impl PluginDriver {
         Self {
             profile: profile.to_string(),
             region: region.to_string(),
+            dev: false,
+        }
+    }
+
+    /// A developer-mode driver: "sessions" run a local shell and
+    /// port-forwards run a placeholder loop — no aws CLI, no network. The
+    /// panes are real PTYs, so multiplexing/broadcast/reaping behave exactly
+    /// as in production.
+    pub fn dev() -> Self {
+        Self {
+            profile: String::new(),
+            region: String::new(),
+            dev: true,
         }
     }
 
@@ -40,7 +55,18 @@ impl PluginDriver {
 
     /// Builds the argv for
     /// `aws ssm start-session --target <id> [--region ..] [--profile ..]`.
+    /// In developer mode it runs the user's shell locally instead, after a
+    /// banner naming the would-be target.
     pub fn shell_command(&self, target: &str) -> Vec<String> {
+        if self.dev {
+            return vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "echo '[skua dev] {target} — local shell, not an SSM session'; exec \"${{SHELL:-/bin/sh}}\""
+                ),
+            ];
+        }
         let mut args: Vec<String> = ["aws", "ssm", "start-session", "--target", target]
             .map(String::from)
             .into();
@@ -64,6 +90,20 @@ impl PluginDriver {
         remote_host: &str,
         remote_port: u16,
     ) -> Vec<String> {
+        if self.dev {
+            let dest = if remote_host.is_empty() {
+                target
+            } else {
+                remote_host
+            };
+            return vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                format!(
+                    "echo '[skua dev] pretending to forward localhost:{local_port} -> {dest}:{remote_port}'; while :; do sleep 3600; done"
+                ),
+            ];
+        }
         let (doc, params) = if remote_host.is_empty() {
             (
                 "AWS-StartPortForwardingSession",
@@ -220,6 +260,29 @@ mod tests {
                 r#"{"portNumber":["80"],"localPortNumber":["8080"]}"#,
             ]
         );
+    }
+
+    // Developer mode must never invoke the aws CLI: sessions run a local
+    // shell and forwards run a placeholder loop, both with a banner naming
+    // the would-be target/ports.
+    #[test]
+    fn dev_driver_runs_locally() {
+        let d = PluginDriver::dev();
+
+        let sh = d.shell_command("i-0abc");
+        assert_eq!(&sh[..2], ["sh", "-c"]);
+        assert!(sh[2].contains("i-0abc"), "{}", sh[2]);
+        assert!(!sh[2].contains("aws "), "{}", sh[2]);
+
+        let fwd = d.port_forward_command("i-0abc", 15432, "db.internal", 5432);
+        assert_eq!(&fwd[..2], ["sh", "-c"]);
+        assert!(fwd[2].contains("localhost:15432"), "{}", fwd[2]);
+        assert!(fwd[2].contains("db.internal:5432"), "{}", fwd[2]);
+        assert!(!fwd[2].contains("aws "), "{}", fwd[2]);
+
+        // Without a remote host, the forward targets the instance itself.
+        let fwd = d.port_forward_command("i-1", 8080, "", 80);
+        assert!(fwd[2].contains("i-1:80"), "{}", fwd[2]);
     }
 
     #[test]
