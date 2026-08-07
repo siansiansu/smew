@@ -84,6 +84,7 @@ Optional, feature by feature:
 | --- | --- |
 | `ec2:DescribeSecurityGroups` / `DescribeSubnets` / `DescribeVpcs` | richer detail view |
 | `ec2:RebootInstances` | the reboot action (`R`) |
+| `cloudwatch:GetMetricData` / `ListMetrics` | the `%CPU` / `%MEM` columns (memory also needs the [CloudWatch agent](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html) on the hosts; without it the column shows `n/a`) |
 | `ssm:GetParameter` | the update-available badge |
 | `ec2-instance-connect:SendSSHPublicKey` | `--ssh-config` ephemeral mode |
 

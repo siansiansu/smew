@@ -34,6 +34,15 @@ pub struct SsmStatus {
     pub ping_status: String,
 }
 
+/// Point-in-time utilization percentages from CloudWatch. None means the
+/// metric is unavailable: no cloudwatch permission, no CloudWatch agent
+/// (memory is agent-only), or the instance is stopped.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Utilization {
+    pub cpu: Option<f64>,
+    pub mem: Option<f64>,
+}
+
 /// The merged EC2 + SSM view of a managed host.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Instance {
@@ -86,6 +95,7 @@ enum Backend {
     Aws {
         ec2: aws_sdk_ec2::Client,
         ssm: aws_sdk_ssm::Client,
+        cw: aws_sdk_cloudwatch::Client,
     },
     /// Developer mode (--dev): no AWS calls; list() serves mock_instances().
     Mock,
@@ -98,6 +108,7 @@ impl Inventory {
             backend: Backend::Aws {
                 ec2: aws_sdk_ec2::Client::new(cfg),
                 ssm: aws_sdk_ssm::Client::new(cfg),
+                cw: aws_sdk_cloudwatch::Client::new(cfg),
             },
         }
     }
@@ -147,7 +158,7 @@ impl Inventory {
     /// detail with SSM reachability. Partial failures are reported as Warnings.
     pub async fn list(&self) -> ListResult {
         let mut res = match &self.backend {
-            Backend::Aws { ec2, ssm } => list_aws(ec2, ssm).await,
+            Backend::Aws { ec2, ssm, .. } => list_aws(ec2, ssm).await,
             Backend::Mock => ListResult {
                 instances: mock_instances(),
                 warnings: Vec::new(),
@@ -156,6 +167,19 @@ impl Inventory {
         res.instances
             .sort_by(|a, b| (&a.name, &a.instance_id).cmp(&(&b.name, &b.instance_id)));
         res
+    }
+
+    /// Fetches CPU/MEM utilization for the given instances from CloudWatch.
+    /// Best-effort: instances without data simply stay absent from the map
+    /// (the UI shows a placeholder), API failures come back as Warnings.
+    pub async fn utilization(
+        &self,
+        ids: &[String],
+    ) -> (HashMap<String, Utilization>, Vec<Warning>) {
+        match &self.backend {
+            Backend::Aws { cw, .. } => utilization_aws(cw, ids).await,
+            Backend::Mock => (mock_utilization(ids), Vec::new()),
+        }
     }
 }
 
@@ -237,6 +261,170 @@ async fn list_aws(ec2: &aws_sdk_ec2::Client, ssm: &aws_sdk_ssm::Client) -> ListR
 
     res.instances = by_id.into_values().collect();
     res
+}
+
+/// CWAgent metric names that carry memory-used-percent (Linux and Windows
+/// agents publish different names).
+const MEM_METRIC_NAMES: [&str; 2] = ["mem_used_percent", "Memory % Committed Bytes In Use"];
+
+/// The CloudWatch-backed utilization fetch.
+///
+/// CPU comes from AWS/EC2 CPUUtilization (always published). Memory only
+/// exists when the CloudWatch agent runs on the host, and its dimension set
+/// varies with the agent's append_dimensions config — so discover the exact
+/// metrics via ListMetrics first, then batch everything into GetMetricData.
+async fn utilization_aws(
+    cw: &aws_sdk_cloudwatch::Client,
+    ids: &[String],
+) -> (HashMap<String, Utilization>, Vec<Warning>) {
+    use aws_sdk_cloudwatch::types::{
+        Dimension, DimensionFilter, Metric, MetricDataQuery, MetricStat, ScanBy,
+    };
+
+    let mut warnings = Vec::new();
+    let mut util: HashMap<String, Utilization> = HashMap::new();
+    if ids.is_empty() {
+        return (util, warnings);
+    }
+
+    // Discover per-instance CWAgent memory metrics. Prefer the variant with
+    // the fewest dimensions (the plain per-instance aggregate).
+    let mut mem_metrics: HashMap<String, Metric> = HashMap::new();
+    let mut pages = cw
+        .list_metrics()
+        .namespace("CWAgent")
+        .dimensions(DimensionFilter::builder().name("InstanceId").build())
+        .into_paginator()
+        .send();
+    while let Some(page) = pages.next().await {
+        let page = match page {
+            Ok(p) => p,
+            Err(e) => {
+                warnings.push(Warning {
+                    op: "cloudwatch:ListMetrics",
+                    err: aws_err(&e),
+                });
+                break;
+            }
+        };
+        for m in page.metrics() {
+            if !MEM_METRIC_NAMES.contains(&m.metric_name().unwrap_or_default()) {
+                continue;
+            }
+            let Some(id) = m
+                .dimensions()
+                .iter()
+                .find(|d| d.name() == Some("InstanceId"))
+                .and_then(|d| d.value())
+            else {
+                continue;
+            };
+            match mem_metrics.entry(id.to_string()) {
+                std::collections::hash_map::Entry::Vacant(v) => {
+                    v.insert(m.clone());
+                }
+                std::collections::hash_map::Entry::Occupied(mut o) => {
+                    if m.dimensions().len() < o.get().dimensions().len() {
+                        o.insert(m.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // One query per metric; the query id ("c3"/"m3") encodes kind + index.
+    let mut queries = Vec::new();
+    for (i, id) in ids.iter().enumerate() {
+        let cpu = Metric::builder()
+            .namespace("AWS/EC2")
+            .metric_name("CPUUtilization")
+            .dimensions(
+                Dimension::builder()
+                    .name("InstanceId")
+                    .value(id.clone())
+                    .build(),
+            )
+            .build();
+        queries.push((format!("c{i}"), cpu));
+        if let Some(m) = mem_metrics.get(id) {
+            queries.push((format!("m{i}"), m.clone()));
+        }
+    }
+
+    // GetMetricData accepts up to 500 queries per call; ask for the last 10
+    // minutes at 5-minute resolution and keep the newest datapoint.
+    let end = std::time::SystemTime::now();
+    let start = end - std::time::Duration::from_secs(600);
+    for chunk in queries.chunks(500) {
+        let mut req = cw
+            .get_metric_data()
+            .start_time(start.into())
+            .end_time(end.into())
+            .scan_by(ScanBy::TimestampDescending);
+        for (qid, metric) in chunk {
+            req = req.metric_data_queries(
+                MetricDataQuery::builder()
+                    .id(qid.clone())
+                    .metric_stat(
+                        MetricStat::builder()
+                            .metric(metric.clone())
+                            .period(300)
+                            .stat("Average")
+                            .build(),
+                    )
+                    .build(),
+            );
+        }
+        let mut pages = req.into_paginator().send();
+        while let Some(page) = pages.next().await {
+            let page = match page {
+                Ok(p) => p,
+                Err(e) => {
+                    warnings.push(Warning {
+                        op: "cloudwatch:GetMetricData",
+                        err: aws_err(&e),
+                    });
+                    break;
+                }
+            };
+            for r in page.metric_data_results() {
+                let qid = r.id().unwrap_or_default();
+                let Some(v) = r.values().first().copied() else {
+                    continue; // no datapoints (e.g. stopped instance)
+                };
+                let Ok(i) = qid[1..].parse::<usize>() else {
+                    continue;
+                };
+                let Some(id) = ids.get(i) else { continue };
+                let u = util.entry(id.clone()).or_default();
+                match &qid[..1] {
+                    "c" => u.cpu = Some(v),
+                    "m" => u.mem = Some(v),
+                    _ => {}
+                }
+            }
+        }
+    }
+    (util, warnings)
+}
+
+/// Developer-mode utilization: stable pseudo-values derived from the id so
+/// the columns show a spread (including over the color thresholds), with
+/// some hosts missing memory — like fleets without the CloudWatch agent.
+fn mock_utilization(ids: &[String]) -> HashMap<String, Utilization> {
+    ids.iter()
+        .map(|id| {
+            let h: u32 = id.bytes().map(u32::from).sum();
+            let mem = (!h.is_multiple_of(4)).then_some(f64::from(h * 13 % 100));
+            (
+                id.clone(),
+                Utilization {
+                    cpu: Some(f64::from(h * 7 % 100)),
+                    mem,
+                },
+            )
+        })
+        .collect()
 }
 
 /// The developer-mode dataset: a spread of states, types, AZs, ages and SSM
@@ -471,6 +659,22 @@ mod tests {
         assert_eq!(
             rt.block_on(inv.latest_version("/any/param")),
             Ok(String::new())
+        );
+
+        // Utilization: every mock host has CPU; at least one lacks memory so
+        // the n/a rendering path is exercised offline.
+        let ids: Vec<String> = res
+            .instances
+            .iter()
+            .map(|i| i.instance_id.clone())
+            .collect();
+        let (util, warns) = rt.block_on(inv.utilization(&ids));
+        assert!(warns.is_empty());
+        assert_eq!(util.len(), ids.len());
+        assert!(util.values().all(|u| u.cpu.is_some()));
+        assert!(
+            util.values().any(|u| u.mem.is_none()),
+            "want a host without the CW agent (mem = n/a)"
         );
     }
 }

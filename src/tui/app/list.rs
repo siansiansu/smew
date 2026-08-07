@@ -3,9 +3,13 @@
 
 use crossterm::event::KeyEvent;
 
-use crate::inventory::Instance;
+use crate::inventory::{Instance, Utilization};
 
 use super::{ConfirmKind, Mode, Model, SortKey};
+
+/// Screen lines per instance row: one line of breathing room above the
+/// content line, echoing Apple HIG list density (row ≈ 2× text height).
+pub(crate) const LIST_ROW_H: usize = 2;
 
 impl Model {
     /// Routes keys while the instance list is on screen.
@@ -119,13 +123,12 @@ impl Model {
                 self.clamp_h_offset();
             }
             "/" | "f" => {
+                // reopen with the current query intact so it can be refined
                 self.filtering = true;
-                self.filter.clear(); // start a fresh (nested) filter level
             }
             "esc" => {
-                if !self.filter_stack.is_empty() {
-                    // pop one nested filter level
-                    self.filter_stack.pop();
+                if !self.filter.value().is_empty() {
+                    self.filter.clear();
                     self.apply_filter();
                     self.table_to_top();
                     return;
@@ -146,6 +149,8 @@ impl Model {
             "N" => self.sort_by_key(SortKey::Name),
             "S" => self.sort_by_key(SortKey::State),
             "T" => self.sort_by_key(SortKey::Type),
+            "C" => self.sort_by_key(SortKey::Cpu),
+            "M" => self.sort_by_key(SortKey::Mem),
             "A" => self.sort_by_key(SortKey::Launch),
             "P" => self.sort_by_key(SortKey::Ip),
             _ => self.table_key(s),
@@ -155,22 +160,15 @@ impl Model {
     fn update_filtering(&mut self, k: &KeyEvent, s: &str) {
         match s {
             "esc" => {
-                // cancel the in-progress term; keep committed levels
+                // clear the query and show everything again
                 self.filtering = false;
                 self.filter.clear();
                 self.apply_filter();
                 self.table_to_top();
             }
             "enter" => {
-                // commit this term as a new nested filter level
-                let t = self.filter.value().trim().to_string();
-                if !t.is_empty() {
-                    self.filter_stack.push(t);
-                }
+                // close the input; the query stays applied
                 self.filtering = false;
-                self.filter.clear();
-                self.apply_filter();
-                self.table_to_top();
             }
             _ => {
                 self.filter.handle(k);
@@ -184,9 +182,9 @@ impl Model {
 
     /// Visible data rows in the instance table for the current height.
     pub(crate) fn visible_data_rows(&self) -> usize {
-        // title + summary + filter + header + rule + status + hints = 7 chrome
+        // top panel (6) + filter + table header + rule + status = 10 chrome
         // rows, plus 2 spare rows left blank at the bottom.
-        (self.height as usize).saturating_sub(9).max(1)
+        ((self.height as usize).saturating_sub(12) / LIST_ROW_H).max(1)
     }
 
     fn table_key(&mut self, s: &str) {
@@ -276,11 +274,19 @@ impl Model {
     pub(super) fn sort_all(&mut self) {
         let key = self.sort_by;
         let asc = self.sort_asc;
+        let util = &self.util;
+        // Utilization sorts on the numeric value; hosts without data sort
+        // below 0% (they'd otherwise interleave as strings, the k9s wart).
+        let pct = |inst: &Instance, f: fn(&Utilization) -> Option<f64>| {
+            util.get(&inst.instance_id).and_then(f).unwrap_or(-1.0)
+        };
         self.all.sort_by(|x, y| {
             let (a, b) = if asc { (x, y) } else { (y, x) };
             match key {
                 SortKey::State => a.state.cmp(&b.state),
                 SortKey::Type => a.instance_type.cmp(&b.instance_type),
+                SortKey::Cpu => pct(a, |u| u.cpu).total_cmp(&pct(b, |u| u.cpu)),
+                SortKey::Mem => pct(a, |u| u.mem).total_cmp(&pct(b, |u| u.mem)),
                 SortKey::Launch => a.launch_time.cmp(&b.launch_time),
                 SortKey::Ip => a.private_ip.cmp(&b.private_ip),
                 SortKey::Name => a.name.cmp(&b.name),
@@ -291,14 +297,12 @@ impl Model {
 
     pub(crate) fn apply_filter(&mut self) {
         let cur = self.filter.value().trim().to_string();
-        let stack = std::mem::take(&mut self.filter_stack);
         self.filtered = self
             .all
             .iter()
-            .filter(|inst| passes_filters(inst, &stack, &cur))
+            .filter(|inst| matches_term(inst, &cur))
             .cloned()
             .collect();
-        self.filter_stack = stack;
         if self.cursor >= self.filtered.len() {
             self.cursor = 0;
         }
@@ -344,33 +348,20 @@ impl Model {
     }
 }
 
-/// Applies the committed filter stack (AND) plus the in-progress term. Each
-/// term may be prefixed with "!" to negate (exclude).
-fn passes_filters(inst: &Instance, stack: &[String], current: &str) -> bool {
-    stack.iter().all(|t| matches_term(inst, t))
-        && (current.is_empty() || matches_term(inst, current))
-}
-
+/// Whether an instance passes the filter query. Matching is by substring
+/// (predictable — no fzf-style character scatter). Whitespace splits the
+/// query into tokens that are AND-ed, so "prod redis" matches names/fields
+/// containing both, in any order; a "!" prefix negates a token ("prod !db"
+/// = contains prod AND not db). An empty query matches everything.
 fn matches_term(inst: &Instance, term: &str) -> bool {
-    let term = term.trim();
-    let (neg, term) = match term.strip_prefix('!') {
-        Some(rest) => (true, rest.trim()),
-        None => (false, term),
-    };
-    if term.is_empty() {
-        return true;
-    }
-    let ok = matches_tokens(inst, &term.to_lowercase());
-    if neg { !ok } else { ok }
-}
-
-/// Whether an instance passes a filter term (already lowercased). Matching
-/// is by substring (predictable — no fzf-style character scatter).
-/// Whitespace splits the term into tokens that are AND-ed, so "prod redis"
-/// matches names/fields containing both, in any order.
-fn matches_tokens(inst: &Instance, q: &str) -> bool {
     let hay = search_text(inst);
-    q.split_whitespace().all(|tok| hay.contains(tok))
+    term.to_lowercase()
+        .split_whitespace()
+        .all(|tok| match tok.strip_prefix('!') {
+            Some(rest) if !rest.is_empty() => !hay.contains(rest),
+            Some(_) => true, // a bare "!" mid-typing matches everything
+            None => hay.contains(tok),
+        })
 }
 
 /// The lowercased, space-joined haystack of an instance's fields.
@@ -434,6 +425,8 @@ mod tests {
         assert!(!matches_term(&a, "prod redis"));
         assert!(matches_term(&a, "!redis"));
         assert!(!matches_term(&a, "!prod"));
+        assert!(matches_term(&a, "prod !redis")); // mixed include + exclude
+        assert!(!matches_term(&a, "web !prod"));
         assert!(matches_term(&a, "10.0.1"));
         assert!(matches_term(&a, "")); // empty matches everything
     }
@@ -447,21 +440,23 @@ mod tests {
     }
 
     #[test]
-    fn nested_filter_stack_ands() {
-        let m_all = vec![
+    fn filter_narrows_and_esc_clears() {
+        let mut m = test_model();
+        m.all = vec![
             inst("web-prod-01", "i-1", "running", "10.0.0.1", true),
             inst("web-stg-01", "i-2", "running", "10.0.0.2", true),
             inst("db-prod-01", "i-3", "stopped", "10.0.0.3", false),
         ];
-        let mut m = test_model();
-        m.all = m_all;
-        m.filter_stack = vec!["prod".to_string()];
-        m.apply_filter();
-        assert_eq!(m.filtered.len(), 2);
-        m.filter_stack.push("!db".to_string());
+        m.filter.insert_str("prod !db");
         m.apply_filter();
         assert_eq!(m.filtered.len(), 1);
         assert_eq!(m.filtered[0].name, "web-prod-01");
+        // esc in list mode clears the applied query
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let k = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        m.update_list(&k, "esc");
+        assert!(m.filter.value().is_empty());
+        assert_eq!(m.filtered.len(), 3);
     }
 
     #[test]

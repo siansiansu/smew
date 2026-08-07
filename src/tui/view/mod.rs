@@ -57,7 +57,7 @@ fn draw_loading(f: &mut Frame) {
     f.render_widget(Paragraph::new(lines), f.area());
 }
 
-/// EC2 lifecycle states bucketed for display (dot, color, chip, counts).
+/// EC2 lifecycle states bucketed for display (color, chip, counts).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum StateClass {
     Running,
@@ -70,15 +70,6 @@ pub(super) fn classify_state(state: &str) -> StateClass {
         "running" => StateClass::Running,
         "stopped" | "stopping" | "terminated" | "shutting-down" => StateClass::Down,
         _ => StateClass::Other,
-    }
-}
-
-/// A colored dot for the EC2 lifecycle state.
-pub(super) fn state_mark(state: &str) -> &'static str {
-    match classify_state(state) {
-        StateClass::Running => "🟢",
-        StateClass::Down => "🔴",
-        StateClass::Other => "🟡",
     }
 }
 

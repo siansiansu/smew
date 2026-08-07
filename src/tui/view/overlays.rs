@@ -7,7 +7,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 
-use super::{StateClass, classify_state, hints_line, pad1, refresh_label, state_color, state_mark};
+use super::{StateClass, classify_state, hints_line, pad1, refresh_label, state_color};
 use crate::theme;
 use crate::tui::{ConfirmKind, FwdField, Model, age_label, leader_label};
 use crate::version;
@@ -182,13 +182,10 @@ impl Model {
         kv(
             &mut lines,
             "State",
-            vec![
-                Span::raw(format!("{} ", state_mark(&inst.state))),
-                Span::styled(
-                    inst.state.clone(),
-                    Style::new().fg(state_color(&inst.state)),
-                ),
-            ],
+            vec![Span::styled(
+                inst.state.clone(),
+                Style::new().fg(state_color(&inst.state)),
+            )],
         );
         kv(
             &mut lines,
@@ -237,9 +234,9 @@ impl Model {
         match &inst.ssm {
             Some(ssm) => {
                 let reach = if inst.is_connectable() {
-                    Span::styled("reachable 🟢", Style::new().fg(th.green))
+                    Span::styled("reachable", Style::new().fg(th.green))
                 } else {
-                    Span::styled("not reachable 🔴", Style::new().fg(th.red))
+                    Span::styled("not reachable", Style::new().fg(th.red))
                 };
                 kv(&mut lines, "Status", vec![reach]);
                 kv(
@@ -256,7 +253,7 @@ impl Model {
             None => kv(
                 &mut lines,
                 "Status",
-                vec![Span::styled("no SSM info 🔴", Style::new().fg(th.red))],
+                vec![Span::styled("no SSM info", Style::new().fg(th.red))],
             ),
         }
 
@@ -357,16 +354,12 @@ impl Model {
             "/ or f",
             "filter: name / id / ip / type / az / vpc / tag (! excludes)",
         );
+        r(&mut lines, "enter", "apply the filter and close the input");
+        r(&mut lines, "esc", "clear the filter");
         r(
             &mut lines,
-            "enter",
-            "add a nested filter level (narrows within results)",
-        );
-        r(&mut lines, "esc", "pop the last filter level");
-        r(
-            &mut lines,
-            "N / S / T / A / P",
-            "sort by name / state / type / age / ip (press again to reverse)",
+            "N / S / T / C / M / A / P",
+            "sort by name / state / type / cpu / mem / age / ip (press again to reverse)",
         );
 
         sec(&mut lines, "Actions");
@@ -621,7 +614,7 @@ mod tests {
         m.mode = Mode::Detail;
         let s = render(&m, 100, 40);
         assert!(s.contains("▍ Overview"), "detail sections missing:\n{s}");
-        assert!(s.contains("reachable 🟢"), "ssm status missing:\n{s}");
+        assert!(s.contains("reachable"), "ssm status missing:\n{s}");
         assert!(
             s.contains("ssh <user>@i-0aaa1111"),
             "ssh hint missing:\n{s}"
@@ -682,7 +675,7 @@ mod tests {
             (10..20).contains(&row),
             "dialog not vertically centered: row {row}\n{s}"
         );
-        assert!(s.contains("SSM instances"), "underlying list missing:\n{s}");
+        assert!(s.contains("INSTANCE-ID"), "underlying list missing:\n{s}");
     }
 
     #[test]

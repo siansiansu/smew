@@ -9,9 +9,9 @@ mod run;
 
 pub use run::run;
 
-pub(crate) use list::max_name_width;
+pub(crate) use list::{LIST_ROW_H, max_name_width};
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use crossterm::event::{KeyEvent, MouseEvent};
 
-use crate::inventory::{Instance, Inventory, ListResult};
+use crate::inventory::{Instance, Inventory, ListResult, Utilization};
 use crate::session::Pane;
 use crate::session::PluginDriver;
 use crate::version;
@@ -34,6 +34,7 @@ pub enum Msg {
     Paste(String),
     Resize(u16, u16),
     Loaded(ListResult),
+    Utilization(HashMap<String, Utilization>),
     Version(String),
     ActionDone {
         verb: &'static str,
@@ -138,6 +139,8 @@ pub enum SortKey {
     Name,
     State,
     Type,
+    Cpu,
+    Mem,
     Launch,
     Ip,
 }
@@ -148,6 +151,8 @@ impl SortKey {
             SortKey::Name => "name",
             SortKey::State => "state",
             SortKey::Type => "type",
+            SortKey::Cpu => "cpu",
+            SortKey::Mem => "mem",
             SortKey::Launch => "age",
             SortKey::Ip => "ip",
         }
@@ -178,6 +183,10 @@ pub struct Model {
     pub(crate) last_sync: Option<chrono::DateTime<chrono::Local>>,
     pub(crate) all: Vec<Instance>,
     pub(crate) filtered: Vec<Instance>,
+    /// CloudWatch CPU/MEM by instance id; hosts without data show n/a.
+    pub(crate) util: HashMap<String, Utilization>,
+    /// When utilization was last fetched (rate-limits the CloudWatch calls).
+    pub(crate) last_util_fetch: Option<std::time::Instant>,
 
     // instance table state
     pub(crate) cursor: usize,
@@ -185,7 +194,6 @@ pub struct Model {
 
     pub(crate) filter: Input,
     pub(crate) filtering: bool,
-    pub(crate) filter_stack: Vec<String>,
 
     // profile picker
     pub(crate) profiles: Vec<String>,
@@ -265,11 +273,12 @@ impl Model {
             last_sync: None,
             all: Vec::new(),
             filtered: Vec::new(),
+            util: HashMap::new(),
+            last_util_fetch: None,
             cursor: 0,
             row_offset: 0,
             filter: Input::default(),
             filtering: false,
-            filter_stack: Vec::new(),
             profiles: opts.profiles,
             picker_cursor: 0,
             picker_input: Input::default(),
@@ -354,6 +363,34 @@ impl Model {
         self.rt.spawn(async move {
             let res = inv.list().await;
             let _ = tx.send(Msg::Loaded(res));
+        });
+    }
+
+    /// Fetches CPU/MEM utilization for the listed instances. Rate-limited:
+    /// CloudWatch bills GetMetricData per metric and the data only moves at
+    /// 5-minute resolution, so refreshing faster than this buys nothing
+    /// (k9s likewise caches metrics for 60s under a faster list refresh).
+    fn spawn_utilization(&mut self) {
+        const UTIL_MIN_INTERVAL: Duration = Duration::from_secs(60);
+        if self.all.is_empty()
+            || self
+                .last_util_fetch
+                .is_some_and(|t| t.elapsed() < UTIL_MIN_INTERVAL)
+        {
+            return;
+        }
+        let Some(inv) = self.inventory.clone() else {
+            return;
+        };
+        self.last_util_fetch = Some(std::time::Instant::now());
+        let ids: Vec<String> = self.all.iter().map(|i| i.instance_id.clone()).collect();
+        let tx = self.tx.clone();
+        self.rt.spawn(async move {
+            // Warnings are dropped on purpose: metrics are an optional
+            // enrichment (n/a in the table), and a permission error would
+            // otherwise repeat in the status bar every fetch.
+            let (util, _warnings) = inv.utilization(&ids).await;
+            let _ = tx.send(Msg::Utilization(util));
         });
     }
 
@@ -449,6 +486,14 @@ impl Model {
                 } else {
                     format!("{} instances", self.all.len())
                 };
+                self.spawn_utilization();
+            }
+
+            Msg::Utilization(util) => {
+                self.util = util;
+                if matches!(self.sort_by, SortKey::Cpu | SortKey::Mem) {
+                    self.sort_all();
+                }
             }
 
             Msg::PaneOutput => {

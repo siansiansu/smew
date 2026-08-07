@@ -97,8 +97,9 @@ impl Model {
                 self.status = format!("loading… ({p})");
                 self.all.clear();
                 self.filtered.clear();
+                self.util.clear();
+                self.last_util_fetch = None; // metrics must reload right away
                 self.filter.clear();
-                self.filter_stack.clear();
                 self.table_to_top();
                 self.update_available = false; // re-check against the new profile
                 self.spawn_load();
