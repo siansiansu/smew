@@ -25,6 +25,7 @@ export default defineConfig({
         items: [
           { text: 'Keybindings', link: '/guide/keybindings' },
           { text: 'Configuration', link: '/guide/configuration' },
+          { text: 'Authentication', link: '/guide/authentication' },
         ],
       },
       {
