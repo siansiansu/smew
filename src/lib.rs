@@ -5,5 +5,6 @@ pub mod aws;
 pub mod config;
 pub mod inventory;
 pub mod session;
+pub mod theme;
 pub mod tui;
 pub mod version;

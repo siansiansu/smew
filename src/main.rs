@@ -5,7 +5,7 @@ use clap::Parser;
 
 use skua::inventory::Instance;
 use skua::session::{PluginDriver, SshOptions};
-use skua::{aws, config, inventory, tui, version};
+use skua::{aws, config, inventory, theme, tui, version};
 
 /// Local AWS SSM connection tool: interactive inventory browser + multiplexing.
 #[derive(Parser, Debug)]
@@ -76,6 +76,16 @@ fn main() {
     if cli.dry_run {
         rt.block_on(run_dry_run(&profile, &region));
         return;
+    }
+
+    // A misconfigured skin fails fast with the resolution hint rather than
+    // silently falling back — the TUI would hide any warning.
+    match theme::load(&cfg.skin) {
+        Ok(t) => theme::init(t),
+        Err(e) => {
+            eprintln!("error: {e}");
+            std::process::exit(1);
+        }
     }
 
     // build resolves a profile to a fresh inventory client + session driver,

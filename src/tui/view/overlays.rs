@@ -3,14 +3,12 @@
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 
-use super::{
-    ACCENT, CYAN, GRAY, GREEN, ORANGE, PINK, RED, SEL_BG, StateClass, VALUE, classify_state,
-    hints_line, pad1, refresh_label, state_color, state_mark,
-};
+use super::{StateClass, classify_state, hints_line, pad1, refresh_label, state_color, state_mark};
+use crate::theme;
 use crate::tui::{ConfirmKind, Model, age_label, leader_label};
 use crate::version;
 
@@ -21,13 +19,14 @@ pub(super) fn draw_profiles(m: &Model, f: &mut Frame) {
     if area.height < 4 {
         return;
     }
+    let th = theme::current();
     let items = m.picker_filtered();
 
     let mut lines: Vec<Line> = vec![pad1(Line::from(Span::styled(
         " Select AWS profile ",
         Style::new()
-            .fg(Color::Indexed(230))
-            .bg(Color::Indexed(62))
+            .fg(th.title_fg)
+            .bg(th.title_bg)
             .add_modifier(Modifier::BOLD),
     )))];
 
@@ -60,7 +59,7 @@ pub(super) fn draw_profiles(m: &Model, f: &mut Frame) {
                 num,
                 Span::styled(
                     format!("▶ {p}"),
-                    Style::new().fg(PINK).add_modifier(Modifier::BOLD),
+                    Style::new().fg(th.pink).add_modifier(Modifier::BOLD),
                 ),
             ])
         } else {
@@ -123,10 +122,11 @@ fn scrolled_screen(f: &mut Frame, lines: Vec<Line<'static>>, off: usize, hint: &
 impl Model {
     /// The detail screen's content lines (hint bar excluded).
     pub(crate) fn detail_lines(&self) -> Vec<Line<'static>> {
+        let th = theme::current();
         let inst = &self.detail;
-        let label = Style::new().fg(GRAY);
-        let value = Style::new().fg(VALUE);
-        let accent = Style::new().fg(ACCENT);
+        let label = Style::new().fg(th.gray);
+        let value = Style::new().fg(th.value);
+        let accent = Style::new().fg(th.accent);
         let dash = |s: &str| {
             if s.is_empty() {
                 "-".to_string()
@@ -138,23 +138,23 @@ impl Model {
         let mut lines: Vec<Line> = Vec::new();
         // header: host name + colored state chip
         let chip_bg = match classify_state(&inst.state) {
-            StateClass::Running => Color::Indexed(22),
-            StateClass::Down => Color::Indexed(52),
-            StateClass::Other => Color::Indexed(58),
+            StateClass::Running => th.chip_running_bg,
+            StateClass::Down => th.chip_down_bg,
+            StateClass::Other => th.chip_other_bg,
         };
         lines.push(Line::from(vec![
             Span::styled(
                 format!(" {} ", inst.name),
                 Style::new()
-                    .fg(Color::Indexed(231))
-                    .bg(SEL_BG)
+                    .fg(th.chip_fg)
+                    .bg(th.sel_bg)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
             Span::styled(
                 format!(" {} ", inst.state),
                 Style::new()
-                    .fg(Color::Indexed(231))
+                    .fg(th.chip_fg)
                     .bg(chip_bg)
                     .add_modifier(Modifier::BOLD),
             ),
@@ -164,7 +164,7 @@ impl Model {
             lines.push(Line::raw(""));
             lines.push(Line::from(Span::styled(
                 format!("▍ {title}"),
-                Style::new().fg(CYAN).add_modifier(Modifier::BOLD),
+                Style::new().fg(th.cyan).add_modifier(Modifier::BOLD),
             )));
         };
         let kv = |lines: &mut Vec<Line>, k: &str, v: Vec<Span<'static>>| {
@@ -237,9 +237,9 @@ impl Model {
         match &inst.ssm {
             Some(ssm) => {
                 let reach = if inst.is_connectable() {
-                    Span::styled("reachable 🟢", Style::new().fg(GREEN))
+                    Span::styled("reachable 🟢", Style::new().fg(th.green))
                 } else {
-                    Span::styled("not reachable 🔴", Style::new().fg(RED))
+                    Span::styled("not reachable 🔴", Style::new().fg(th.red))
                 };
                 kv(&mut lines, "Status", vec![reach]);
                 kv(
@@ -256,7 +256,7 @@ impl Model {
             None => kv(
                 &mut lines,
                 "Status",
-                vec![Span::styled("no SSM info 🔴", Style::new().fg(RED))],
+                vec![Span::styled("no SSM info 🔴", Style::new().fg(th.red))],
             ),
         }
 
@@ -315,6 +315,7 @@ pub(super) fn draw_help(m: &Model, f: &mut Frame) {
 impl Model {
     /// The help screen's content lines (hint bar excluded).
     pub(crate) fn help_lines(&self) -> Vec<Line<'static>> {
+        let th = theme::current();
         let lead = leader_label(&self.leader);
         let mut lines = vec![pad1(Line::from(Span::styled(
             format!("skua {} — keys", version::VERSION),
@@ -324,14 +325,14 @@ impl Model {
             lines.push(Line::raw(""));
             lines.push(Line::from(Span::styled(
                 format!("▍ {title}"),
-                Style::new().fg(CYAN).add_modifier(Modifier::BOLD),
+                Style::new().fg(th.cyan).add_modifier(Modifier::BOLD),
             )));
         };
         let row = |lines: &mut Vec<Line>, k: String, v: String| {
             lines.push(Line::from(vec![
                 Span::styled(
                     format!("  {k:<18} "),
-                    Style::new().fg(ORANGE).add_modifier(Modifier::BOLD),
+                    Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(v),
             ]));
@@ -490,7 +491,7 @@ pub(super) fn draw_confirm(m: &Model, f: &mut Frame) {
     let block = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(RED))
+        .border_style(Style::new().fg(theme::current().red))
         .padding(Padding::new(3, 3, 1, 1));
     let fa = f.area();
     let area = Rect::new(

@@ -4,14 +4,12 @@
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
-use super::{
-    CYAN, GRAY, GREEN, ORANGE, RED, SEL_BG, SEL_FG, StateClass, classify_state, hints_line, pad1,
-    refresh_label, state_mark,
-};
+use super::{StateClass, classify_state, hints_line, pad1, refresh_label, state_mark};
+use crate::theme;
 use crate::tui::{Model, SortKey, age_label};
 use crate::version;
 
@@ -151,22 +149,23 @@ fn title_line(m: &Model) -> Line<'static> {
 
 /// The colored instance-count header.
 fn summary_line(m: &Model) -> Line<'static> {
+    let th = theme::current();
     let (total, running, stopped, other) = counts(m);
     let mut spans = vec![
         Span::raw(format!("Total: {total}    ")),
-        Span::styled(format!("Running: {running}"), Style::new().fg(GREEN)),
+        Span::styled(format!("Running: {running}"), Style::new().fg(th.green)),
         Span::raw("    "),
-        Span::styled(format!("Stopped: {stopped}"), Style::new().fg(RED)),
+        Span::styled(format!("Stopped: {stopped}"), Style::new().fg(th.red)),
         Span::raw("    "),
-        Span::styled(format!("Other: {other}"), Style::new().fg(ORANGE)),
+        Span::styled(format!("Other: {other}"), Style::new().fg(th.orange)),
     ];
     if m.update_available {
         spans.push(Span::raw("    "));
         spans.push(Span::styled(
             format!(" ⬆ update {} ", m.latest_version),
             Style::new()
-                .bg(ORANGE)
-                .fg(Color::Indexed(0))
+                .bg(th.orange)
+                .fg(th.notice_fg)
                 .add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
@@ -237,7 +236,8 @@ fn filter_line(m: &Model) -> Option<Line<'static>> {
 
 /// The colored bottom status bar.
 fn status_bar(m: &Model) -> Line<'static> {
-    let label = Style::new().fg(GRAY);
+    let th = theme::current();
+    let label = Style::new().fg(th.gray);
     let sep = Span::styled("  │  ", label);
     let mut spans = vec![
         Span::styled("Found ", label),
@@ -254,7 +254,7 @@ fn status_bar(m: &Model) -> Line<'static> {
             } else {
                 m.region.clone()
             },
-            Style::new().fg(CYAN),
+            Style::new().fg(th.cyan),
         ),
         sep.clone(),
         Span::styled("Synced: ", label),
@@ -262,15 +262,15 @@ fn status_bar(m: &Model) -> Line<'static> {
             m.last_sync
                 .map(|t| t.format("%H:%M:%S").to_string())
                 .unwrap_or_else(|| "—".into()),
-            Style::new().fg(GREEN),
+            Style::new().fg(th.green),
         ),
         sep.clone(),
         Span::styled("Auto: ", label),
-        Span::styled(auto_label(m), Style::new().fg(ORANGE)),
+        Span::styled(auto_label(m), Style::new().fg(th.orange)),
     ];
     if !m.status.is_empty() {
         spans.push(sep);
-        spans.push(Span::styled(m.status.clone(), Style::new().fg(RED)));
+        spans.push(Span::styled(m.status.clone(), Style::new().fg(th.red)));
     }
     Line::from(spans)
 }
@@ -297,7 +297,8 @@ fn draw_table(m: &Model, dst: &mut Buffer, area: Rect) {
     let mut wide = Buffer::empty(Rect::new(0, 0, content_w, 2 + data_rows));
 
     // header + rule
-    let header_style = Style::new().fg(CYAN).add_modifier(Modifier::BOLD);
+    let th = theme::current();
+    let header_style = Style::new().fg(th.cyan).add_modifier(Modifier::BOLD);
     let mut x = 0u16;
     for c in &cols {
         wide.set_stringn(x + 1, 0, &c.title, c.width, header_style);
@@ -316,8 +317,8 @@ fn draw_table(m: &Model, dst: &mut Buffer, area: Rect) {
         let selected = idx == m.cursor;
         let row_style = if selected {
             Style::new()
-                .fg(SEL_FG)
-                .bg(SEL_BG)
+                .fg(th.sel_fg)
+                .bg(th.sel_bg)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::new()

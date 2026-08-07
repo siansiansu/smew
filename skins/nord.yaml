@@ -1,0 +1,31 @@
+# Nord skin for skua (https://nordtheme.com)
+# Copy to ~/.config/skua/skins/<name>.yaml and set `skin: <name>` in
+# ~/.config/skua/config.yaml. Any role may be omitted to keep the default.
+
+cyan: "#88c0d0"
+green: &green "#a3be8c"
+red: &red "#bf616a"
+orange: &orange "#d08770"
+gray: &nord3 "#4c566a"
+value: &nord4 "#d8dee9"
+accent: &yellow "#ebcb8b"
+pink: "#b48ead"
+
+sel_fg: &nord6 "#eceff4"
+sel_bg: &nord2 "#434c5e"
+
+title_fg: *nord6
+title_bg: *nord3
+
+chip_fg: &nord0 "#2e3440"
+chip_running_bg: *green
+chip_down_bg: *red
+chip_other_bg: *orange
+
+border_scroll: *yellow
+border_unfocused: *nord3
+
+badge_fg: *nord6
+badge_zoom_bg: "#8fbcbb"
+badge_info_bg: "#5e81ac"
+notice_fg: *nord0

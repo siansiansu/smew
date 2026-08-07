@@ -3,7 +3,7 @@
 Planned work, in order. Each item ships independently; later items are
 re-evaluated (or dropped) as real usage data comes in.
 
-## 1. SSO token expiry detection
+## 1. SSO token expiry detection ✅ (2026-08)
 
 The SDK credential chain already supports IAM Identity Center profiles
 (`sso_session`), but an expired token surfaces as a cryptic SDK error on the
@@ -14,7 +14,7 @@ Optionally offer to run the login command from the TUI.
 - Smallest useful version: pattern-match the error, print the hint.
 - No new auth code; this is pure error UX on top of the existing chain.
 
-## 2. Auth support matrix (verify + document)
+## 2. Auth support matrix (verify + document) ✅ (2026-08 — docs/guide/authentication.md)
 
 Because skua rides the SDK default credential chain, most auth methods should
 already work. Verify each and document the result as a support matrix in the
@@ -31,7 +31,7 @@ docs site:
 
 Almost zero code; mostly testing and a docs page.
 
-## 3. Skins (user-selectable color themes)
+## 3. Skins (user-selectable color themes) ✅ (2026-08)
 
 Let users pick a color theme, following the k9s model (see
 `references/k9s/skins/`): a skin is a YAML file mapping named UI roles to
@@ -42,8 +42,8 @@ colors, and the config selects one by name.
   `view/list.rs`) into a single `Theme` struct with named roles; the current
   values become the built-in default skin.
 - Load skins from `~/.config/skua/skins/<name>.yaml`; select via
-  `skin: <name>` in `config.yaml`. Missing/invalid skin falls back to the
-  default with a warning.
+  `skin: <name>` in `config.yaml`. A missing/invalid skin fails at startup
+  with the resolution path named (the TUI would hide a fallback warning).
 - Support hex (`"#ff79c6"`), 256-color index, and `default` (terminal
   default) values, like k9s.
 - Ship a few built-in skins (e.g. dracula, gruvbox, nord) compiled in, so

@@ -29,10 +29,43 @@ mouse: true
 version_param: "/skua/latest-version"
 # Set true to turn the update check off entirely.
 disable_version_check: false
+
+# Color theme: a built-in name (default, dracula, gruvbox-dark, nord) or a
+# custom skin at ~/.config/skua/skins/<name>.yaml.
+skin: ""
 ```
 
 A commented copy ships as
 [`config.example.yaml`](https://github.com/siansiansu/skua/blob/main/config.example.yaml).
+
+## Skins
+
+`skin` selects a color theme. Built-ins: `default`, `dracula`,
+`gruvbox-dark`, `nord`. For a custom theme, drop a YAML file at
+`~/.config/skua/skins/<name>.yaml` and set `skin: <name>` — the
+[built-in skin files](https://github.com/siansiansu/skua/tree/main/skins)
+are copyable starting points.
+
+A skin sets any subset of the UI color roles (unset roles keep the default
+theme's value). Colors are written as `"#rrggbb"`, a 256-color index
+(`39`), or `default` for the terminal's own color:
+
+```yaml
+# ~/.config/skua/skins/mytheme.yaml
+green: "#50fa7b"     # running states, sync timestamp
+red: "#ff5555"       # down states, errors, broadcast
+orange: "#ffb86c"    # transitional states, key hints, notices
+cyan: "#8be9fd"      # section/table headers, region
+pink: "#ff79c6"      # focused pane border, picker cursor
+sel_fg: 229          # selected row text
+sel_bg: 57           # selected row background
+```
+
+The full role list lives in
+[`src/theme.rs`](https://github.com/siansiansu/skua/blob/main/src/theme.rs).
+A misspelled role or malformed color fails at startup with the file and key
+named. Session pane content is never themed — it keeps whatever colors the
+remote shell emits.
 
 ## CLI flags
 

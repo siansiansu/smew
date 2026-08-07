@@ -1,0 +1,31 @@
+# Dracula skin for skua (https://draculatheme.com)
+# Copy to ~/.config/skua/skins/<name>.yaml and set `skin: <name>` in
+# ~/.config/skua/config.yaml. Any role may be omitted to keep the default.
+
+cyan: &cyan "#8be9fd"
+green: &green "#50fa7b"
+red: &red "#ff5555"
+orange: &orange "#ffb86c"
+gray: &comment "#6272a4"
+value: &foreground "#f8f8f2"
+accent: &purple "#bd93f9"
+pink: "#ff79c6"
+
+sel_fg: *foreground
+sel_bg: &current_line "#44475a"
+
+title_fg: *foreground
+title_bg: *current_line
+
+chip_fg: &background "#282a36"
+chip_running_bg: *green
+chip_down_bg: *red
+chip_other_bg: *orange
+
+border_scroll: "#f1fa8c"
+border_unfocused: *current_line
+
+badge_fg: *foreground
+badge_zoom_bg: "#2a9d8f"
+badge_info_bg: *comment
+notice_fg: *background

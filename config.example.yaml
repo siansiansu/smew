@@ -29,3 +29,8 @@ mouse: true
 version_param: "/skua/latest-version"
 # Set true to turn the update check off entirely.
 disable_version_check: false
+
+# Color theme: a built-in name (default, dracula, gruvbox-dark, nord) or a
+# custom skin at ~/.config/skua/skins/<name>.yaml. The skins/ directory in
+# the repo has copyable examples. Empty means the default theme.
+skin: ""

@@ -1,0 +1,31 @@
+# Gruvbox dark skin for skua (https://github.com/morhetz/gruvbox)
+# Copy to ~/.config/skua/skins/<name>.yaml and set `skin: <name>` in
+# ~/.config/skua/config.yaml. Any role may be omitted to keep the default.
+
+cyan: "#83a598"
+green: &green "#b8bb26"
+red: &red "#fb4934"
+orange: &orange "#fe8019"
+gray: "#928374"
+value: &fg "#ebdbb2"
+accent: &yellow "#fabd2f"
+pink: "#d3869b"
+
+sel_fg: "#fbf1c7"
+sel_bg: &bg2 "#504945"
+
+title_fg: "#fbf1c7"
+title_bg: *bg2
+
+chip_fg: &bg "#282828"
+chip_running_bg: *green
+chip_down_bg: *red
+chip_other_bg: *orange
+
+border_scroll: *yellow
+border_unfocused: *bg2
+
+badge_fg: *fg
+badge_zoom_bg: "#689d6a"
+badge_info_bg: "#665c54"
+notice_fg: *bg

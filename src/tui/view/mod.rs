@@ -1,5 +1,6 @@
 //! Rendering for the list / profile / detail / help / confirm screens.
-//! Styling uses fixed 256-color indexes.
+//! Colors come from the active theme (crate::theme); the defaults are fixed
+//! 256-color indexes.
 
 mod list;
 mod overlays;
@@ -11,18 +12,8 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 
 use super::{ConfirmKind, Mode, Model};
+use crate::theme;
 use crate::version;
-
-pub(crate) const CYAN: Color = Color::Indexed(39);
-pub(crate) const GREEN: Color = Color::Indexed(42);
-pub(crate) const RED: Color = Color::Indexed(203);
-pub(crate) const ORANGE: Color = Color::Indexed(214);
-pub(crate) const GRAY: Color = Color::Indexed(245);
-pub(crate) const VALUE: Color = Color::Indexed(252);
-pub(crate) const ACCENT: Color = Color::Indexed(180);
-pub(crate) const PINK: Color = Color::Indexed(205);
-pub(crate) const SEL_FG: Color = Color::Indexed(229);
-pub(crate) const SEL_BG: Color = Color::Indexed(57);
 
 pub(crate) fn draw(m: &Model, f: &mut Frame) {
     match m.mode {
@@ -91,15 +82,17 @@ pub(super) fn state_mark(state: &str) -> &'static str {
 
 /// The text color for a lifecycle state.
 pub(super) fn state_color(state: &str) -> Color {
+    let th = theme::current();
     match classify_state(state) {
-        StateClass::Running => GREEN,
-        StateClass::Down => RED,
-        StateClass::Other => ORANGE,
+        StateClass::Running => th.green,
+        StateClass::Down => th.red,
+        StateClass::Other => th.orange,
     }
 }
 
 /// The colored key:action hint bar.
 pub(super) fn hints_line(pairs: &[(&str, &str)]) -> Line<'static> {
+    let th = theme::current();
     let mut spans = Vec::new();
     for (i, (key, act)) in pairs.iter().enumerate() {
         if i > 0 {
@@ -107,9 +100,9 @@ pub(super) fn hints_line(pairs: &[(&str, &str)]) -> Line<'static> {
         }
         spans.push(Span::styled(
             key.to_string(),
-            Style::new().fg(ORANGE).add_modifier(Modifier::BOLD),
+            Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
         ));
-        spans.push(Span::styled(format!(":{act}"), Style::new().fg(GRAY)));
+        spans.push(Span::styled(format!(":{act}"), Style::new().fg(th.gray)));
     }
     Line::from(spans)
 }

@@ -9,8 +9,8 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 
-use super::{GRAY, ORANGE, PINK, RED};
 use crate::session::Pane;
+use crate::theme;
 use crate::tui::session::pane_key;
 use crate::tui::{Model, leader_label};
 
@@ -88,10 +88,11 @@ fn draw_leader_menu(m: &Model, f: &mut Frame) {
         w,
         h,
     );
+    let th = theme::current();
     let block = Block::new()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(GRAY))
+        .border_style(Style::new().fg(th.gray))
         .title(format!(" {lead} — command "));
     let lines: Vec<Line> = entries
         .iter()
@@ -99,7 +100,7 @@ fn draw_leader_menu(m: &Model, f: &mut Frame) {
             Line::from(vec![
                 Span::styled(
                     format!(" {k:<kw$}  "),
-                    Style::new().fg(ORANGE).add_modifier(Modifier::BOLD),
+                    Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(v.clone()),
             ])
@@ -146,16 +147,17 @@ fn draw_pane_box(m: &Model, i: usize, rect: Rect, buf: &mut Buffer) {
     let active = m.broadcasting();
     let receiving = (active && in_group) || (!active && focused); // gets input right now
 
+    let th = theme::current();
     let bc = if scrolling_here {
-        Color::Indexed(220) // scroll mode: yellow
+        th.border_scroll
     } else if active && in_group {
-        RED // broadcasting to this pane
+        th.red // broadcasting to this pane
     } else if in_group {
-        ORANGE // selected into a pending group
+        th.orange // selected into a pending group
     } else if focused {
-        PINK
+        th.pink
     } else {
-        Color::Indexed(240)
+        th.border_unfocused
     };
 
     let block = Block::new()
@@ -286,19 +288,20 @@ fn overlay_cursor(p: &Pane, buf: &mut Buffer, area: Rect) {
 
 /// The badge + help header line above the panes.
 fn session_header(m: &Model) -> Line<'static> {
-    let badge = |text: String, bg: u8| {
+    let th = theme::current();
+    let badge = |text: String, bg: Color| {
         Span::styled(
             format!(" {text} "),
             Style::new()
-                .bg(Color::Indexed(bg))
-                .fg(Color::Indexed(15))
+                .bg(bg)
+                .fg(th.badge_fg)
                 .add_modifier(Modifier::BOLD),
         )
     };
     let mut spans: Vec<Span<'static>> = Vec::new();
     let n = m.broadcast_count();
     if m.broadcasting() {
-        spans.push(badge(format!("🔊 BROADCAST {n}/{}", m.panes.len()), 203));
+        spans.push(badge(format!("🔊 BROADCAST {n}/{}", m.panes.len()), th.red));
         spans.push(Span::raw(" "));
     } else if n == 1 {
         // one selected — need one more to auto-broadcast
@@ -307,24 +310,24 @@ fn session_header(m: &Model) -> Line<'static> {
                 "GROUP 1/{} — select 1 more (space) to broadcast",
                 m.panes.len()
             ),
-            62,
+            th.badge_info_bg,
         ));
         spans.push(Span::raw(" "));
     }
     if m.zoomed {
-        spans.push(badge("ZOOM".into(), 36));
+        spans.push(badge("ZOOM".into(), th.badge_zoom_bg));
         spans.push(Span::raw(" "));
     }
     if m.scrolling {
-        spans.push(badge("SCROLL".into(), 220));
+        spans.push(badge("SCROLL".into(), th.border_scroll));
         spans.push(Span::raw(" "));
     }
     if m.leader_pending {
-        spans.push(badge("PREFIX".into(), 57));
+        spans.push(badge("PREFIX".into(), th.sel_bg));
         spans.push(Span::raw(" "));
     }
     if m.focus_nav {
-        spans.push(badge("←→↑↓ FOCUS · space ±bcast".into(), 62));
+        spans.push(badge("←→↑↓ FOCUS · space ±bcast".into(), th.badge_info_bg));
         spans.push(Span::raw(" "));
     }
 
@@ -358,8 +361,8 @@ fn session_header(m: &Model) -> Line<'static> {
         spans.push(Span::styled(
             format!(" ⚠ {} ", m.status),
             Style::new()
-                .fg(Color::Indexed(0))
-                .bg(ORANGE)
+                .fg(th.notice_fg)
+                .bg(th.orange)
                 .add_modifier(Modifier::BOLD),
         ));
     }

@@ -31,6 +31,9 @@ pub struct Config {
     /// set false to keep the terminal's native click-drag text selection
     /// (with mouse on, hold Shift while dragging instead).
     pub mouse: Option<bool>,
+    /// Color theme: a built-in name (default, dracula, gruvbox-dark, nord)
+    /// or a file in ~/.config/skua/skins/<name>.yaml. Empty means default.
+    pub skin: String,
 }
 
 impl Config {
