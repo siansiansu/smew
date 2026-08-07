@@ -6,13 +6,13 @@ Tab-completion of `--profile` values (reads `~/.aws/config` +
 zsh:
 
 ```sh
-mkdir -p ~/.zsh/completions && cp completions/_skua ~/.zsh/completions/
+mkdir -p ~/.zsh/completions && cp completions/_smew ~/.zsh/completions/
 # in ~/.zshrc, before compinit:  fpath=(~/.zsh/completions $fpath)
 ```
 
 bash:
 
 ```sh
-cp completions/skua.bash ~/.skua-completion.bash
-echo 'source ~/.skua-completion.bash' >> ~/.bashrc
+cp completions/smew.bash ~/.smew-completion.bash
+echo 'source ~/.smew-completion.bash' >> ~/.bashrc
 ```

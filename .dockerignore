@@ -1,0 +1,31 @@
+# Build artifacts and caches
+target/
+node_modules/
+
+# VCS (build.rs tolerates a missing .git — --version just omits the commit)
+.git/
+
+# Local tooling state — contains machine-local paths; must never enter a layer
+.claude/
+
+# Local config and secrets (mirrors .gitignore) — COPY . . must never pick
+# these up into a builder layer or build cache
+config.yaml
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+*.log
+
+# Docs site and repo meta not needed for the build
+docs/
+references/
+completions/
+*.md
+package.json
+package-lock.json
+
+# Docker files themselves
+Dockerfile
+.dockerignore

@@ -11,9 +11,11 @@ mod keymap;
 mod session;
 mod view;
 
-pub use app::{BuildFn, ConfirmKind, Layout, Mode, Model, Msg, Options, SortKey, run};
+pub use app::{BuildFn, Options, run};
 
-pub(crate) use app::{age_label, leader_label};
+pub(crate) use app::{
+    ConfirmKind, FwdField, Layout, Mode, Model, SortKey, age_label, leader_label,
+};
 
 #[cfg(test)]
 pub(crate) use app::{max_name_width, test_model};

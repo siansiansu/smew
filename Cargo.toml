@@ -1,12 +1,26 @@
 [package]
-name = "skua"
+name = "smew"
 # The version shown in the UI title bar and by --version. Bump when releasing.
 version = "1.0.0"
 edition = "2024"
+# Verified with `cargo +1.88 check --all-targets` (edition 2024 needs ≥1.85;
+# the AWS SDK / ratatui declare 1.88).
+rust-version = "1.88"
+# Whitelist of what ships to crates.io. skins/ and config.example.yaml are
+# include_str!-ed (src/theme.rs, the config test), so they must stay.
+include = [
+    "/src/**",
+    "/build.rs",
+    "/skins/*.yaml",
+    "/config.example.yaml",
+    "/completions/**",
+    "/README.md",
+    "/LICENSE",
+]
 description = "Local AWS SSM connection tool: interactive inventory browser + iTerm2-like multiplexing/broadcast"
 license = "MIT"
-repository = "https://github.com/siansiansu/skua"
-homepage = "https://siansiansu.github.io/skua/"
+repository = "https://github.com/siansiansu/smew"
+homepage = "https://siansiansu.github.io/smew/"
 readme = "README.md"
 keywords = ["aws", "ssm", "tui", "session-manager", "terminal"]
 categories = ["command-line-utilities"]

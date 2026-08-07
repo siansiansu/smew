@@ -226,22 +226,22 @@ impl Model {
             let page = if rows > 1 { rows - 1 } else { 10 };
             (p.scrollback_len(), page)
         });
-        let mut off = self.scroll_offset as i64;
-        match s {
-            "up" | "k" => off += 1,
-            "down" | "j" => off -= 1,
-            "pgup" | "b" | "ctrl+b" => off += page as i64,
-            "pgdown" | "f" | "ctrl+f" | "space" => off -= page as i64,
-            "g" | "home" => off = max as i64,
-            "G" | "end" => off = 0,
+        let off = self.scroll_offset;
+        let next = match s {
+            "up" | "k" => off.saturating_add(1),
+            "down" | "j" => off.saturating_sub(1),
+            "pgup" | "b" | "ctrl+b" => off.saturating_add(page),
+            "pgdown" | "f" | "ctrl+f" | "space" => off.saturating_sub(page),
+            "g" | "home" => max,
+            "G" | "end" => 0,
             "esc" | "q" | "]" => {
                 self.scrolling = false;
                 self.scroll_offset = 0;
                 return;
             }
-            _ => {}
-        }
-        self.scroll_offset = off.clamp(0, max as i64) as usize;
+            _ => off,
+        };
+        self.scroll_offset = next.min(max);
     }
 
     /// Applies f to every live pane that should receive input: the broadcast

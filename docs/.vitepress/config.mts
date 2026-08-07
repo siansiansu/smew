@@ -1,11 +1,11 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-  title: 'skua',
+  title: 'smew',
   description:
     'Local AWS SSM connection tool: interactive inventory browser + iTerm2-like multiplexing/broadcast',
-  base: '/skua/',
-  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/skua/logo.svg' }]],
+  base: '/smew/',
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/smew/logo.svg' }]],
   themeConfig: {
     logo: '/logo.svg',
     nav: [
@@ -39,10 +39,10 @@ export default defineConfig({
         ],
       },
     ],
-    socialLinks: [{ icon: 'github', link: 'https://github.com/siansiansu/skua' }],
+    socialLinks: [{ icon: 'github', link: 'https://github.com/siansiansu/smew' }],
     search: { provider: 'local' },
     editLink: {
-      pattern: 'https://github.com/siansiansu/skua/edit/main/docs/:path',
+      pattern: 'https://github.com/siansiansu/smew/edit/main/docs/:path',
       text: 'Edit this page on GitHub',
     },
     footer: {

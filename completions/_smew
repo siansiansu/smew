@@ -1,9 +1,9 @@
-#compdef skua
-# zsh completion for skua.
+#compdef smew
+# zsh completion for smew.
 #
 # Install:
 #   mkdir -p ~/.zsh/completions
-#   cp completions/_skua ~/.zsh/completions/
+#   cp completions/_smew ~/.zsh/completions/
 #   # ensure this is in ~/.zshrc BEFORE `compinit`:
 #   #   fpath=(~/.zsh/completions $fpath)
 #   #   autoload -Uz compinit && compinit
@@ -11,7 +11,7 @@
 # --profile completes from the same profiles the aws CLI sees, by reading
 # ~/.aws/config and ~/.aws/credentials directly (no aws command is run).
 
-_skua_profiles() {
+_smew_profiles() {
   local -a profiles
   local f cfg="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
   local cred="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"
@@ -23,7 +23,7 @@ _skua_profiles() {
   compadd -a profiles
 }
 
-_skua_regions() {
+_smew_regions() {
   local -a regions
   regions=(
     us-east-1 us-east-2 us-west-1 us-west-2
@@ -35,13 +35,13 @@ _skua_regions() {
   compadd -a regions
 }
 
-_skua() {
+_smew() {
   _arguments -s \
-    '--profile[AWS profile]:profile:_skua_profiles' \
-    '--region[AWS region]:region:_skua_regions' \
+    '--profile[AWS profile]:profile:_smew_profiles' \
+    '--region[AWS region]:region:_smew_regions' \
     '--dry-run[print identity + inventory and exit (no TUI)]' \
     '--dev[developer mode: mock inventory + local-shell sessions, no AWS]' \
     '(-h --help)'{-h,--help}'[show help]'
 }
 
-_skua "$@"
+_smew "$@"

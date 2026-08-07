@@ -1,15 +1,15 @@
 //! Binary entry point: CLI parsing and the non-TUI modes (--version,
-//! --ssh-config, --dry-run); everything else lives in the skua library.
+//! --ssh-config, --dry-run); everything else lives in the smew library.
 
 use clap::Parser;
 
-use skua::inventory::Instance;
-use skua::session::{PluginDriver, SshOptions};
-use skua::{aws, config, inventory, theme, tui, version};
+use smew::inventory::Instance;
+use smew::session::{PluginDriver, SshOptions};
+use smew::{aws, config, inventory, theme, tui, version};
 
 /// Local AWS SSM connection tool: interactive inventory browser + multiplexing.
 #[derive(Parser, Debug)]
-#[command(name = "skua", disable_version_flag = true)]
+#[command(name = "smew", disable_version_flag = true)]
 struct Cli {
     /// AWS profile (default: config / env / shared default profile)
     #[arg(long)]
@@ -27,7 +27,7 @@ struct Cli {
     /// Print an ~/.ssh/config block for ssh/scp over SSM and exit
     #[arg(long)]
     ssh_config: bool,
-    /// With --ssh-config: use a static authorized_keys key instead of
+    /// With --ssh-config: use a static `authorized_keys` key instead of
     /// ephemeral EC2 Instance Connect
     #[arg(long)]
     ssh_static: bool,
@@ -164,7 +164,7 @@ async fn print_ssh_config(profile: &str, region: &str, ephemeral: bool, pub_key:
     };
 
     eprintln!("# Add this to ~/.ssh/config (or a file Include'd from it), e.g.:");
-    eprintln!("#   skua --ssh-config >> ~/.ssh/config");
+    eprintln!("#   smew --ssh-config >> ~/.ssh/config");
     eprintln!(
         "# Then: ssh <user>@i-0abc...   scp ./f <user>@i-0abc...:/tmp/   (user = ec2-user/ubuntu/…)"
     );
@@ -193,10 +193,16 @@ async fn print_ssh_config(profile: &str, region: &str, ephemeral: bool, pub_key:
     }
     eprintln!("# No inbound port 22 is opened in either mode.");
     eprintln!();
-    print!("{}", drv.ssh_config_block(&opt));
+    match drv.ssh_config_block(&opt) {
+        Ok(block) => print!("{block}"),
+        Err(e) => {
+            eprintln!("cannot generate ssh config: {e}");
+            std::process::exit(1);
+        }
+    }
 }
 
-/// Picks the first existing ~/.ssh/id_*.pub, else id_ed25519.pub.
+/// Picks the first existing ~/.ssh/id_*.pub, else `id_ed25519.pub`.
 fn default_pub_key() -> String {
     let Some(home) = dirs::home_dir() else {
         return "~/.ssh/id_ed25519.pub".to_string();
@@ -267,26 +273,29 @@ async fn run_dry_run(profile: &str, region: &str, dev: bool) {
             .unwrap_or_default();
         rows.push(vec![
             if inst.is_connectable() { "yes" } else { "no" }.to_string(),
-            inst.name.clone(),
-            inst.instance_id.clone(),
-            inst.state.clone(),
-            inst.instance_type.clone(),
+            sanitize(&inst.name),
+            sanitize(&inst.instance_id),
+            sanitize(&inst.state),
+            sanitize(&inst.instance_type),
             launched,
-            inst.az.clone(),
-            inst.private_ip.clone(),
-            inst.vpc_id.clone(),
-            inst.subnet_id.clone(),
-            sg_summary(inst),
-            tag_summary(inst),
+            sanitize(&inst.az),
+            sanitize(&inst.private_ip),
+            sanitize(&inst.vpc_id),
+            sanitize(&inst.subnet_id),
+            sanitize(&sg_summary(inst)),
+            sanitize(&tag_summary(inst)),
         ]);
     }
     print!("{}", align_columns(&rows));
 
     println!("\n{} instances", res.instances.len());
     for warn in &res.warnings {
-        sso_expired |= aws::is_sso_token_error(&warn.err);
         println!("WARNING {}: {}", warn.op, warn.err);
     }
+    sso_expired |= res
+        .warnings
+        .iter()
+        .any(|warn| aws::is_sso_token_error(&warn.err));
     if sso_expired {
         println!("{}", aws::sso_login_hint(profile));
     }
@@ -310,7 +319,8 @@ fn align_columns(rows: &[Vec<String>]) -> String {
             if i + 1 == row.len() {
                 out.push_str(cell);
             } else {
-                let _ = write!(out, "{:w$}", cell, w = width[i] + PAD);
+                write!(out, "{:w$}", cell, w = width[i] + PAD)
+                    .expect("writing to a String cannot fail");
             }
         }
         out.push('\n');
@@ -339,4 +349,27 @@ fn tag_summary(inst: &Instance) -> String {
         .map(|(k, v)| format!("{k}={v}"))
         .collect::<Vec<_>>()
         .join(",")
+}
+
+/// Strips control characters from AWS-derived strings before they reach the
+/// terminal. Anyone with `ec2:CreateTags` in the account controls tag and
+/// name content, so --dry-run output must not pass raw ANSI/OSC sequences
+/// through. (The TUI path is already safe: ratatui filters control chars.)
+fn sanitize(s: &str) -> String {
+    s.chars().filter(|c| !c.is_control()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize;
+
+    #[test]
+    fn sanitize_strips_control_chars() {
+        assert_eq!(
+            sanitize("web-\x1b]0;pwned\x07\x1b[2J01\n"),
+            "web-]0;pwned[2J01"
+        );
+        assert_eq!(sanitize("plain-name_1.2 ürlaub"), "plain-name_1.2 ürlaub");
+        assert_eq!(sanitize(""), "");
+    }
 }

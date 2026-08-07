@@ -1,4 +1,4 @@
-# Releasing skua
+# Releasing smew
 
 Releases are fully automated by [dist](https://axodotdev.github.io/cargo-dist/)
 (`.github/workflows/release.yml`, generated from `dist-workspace.toml`).
@@ -13,14 +13,14 @@ git push origin main --tags
 ```
 
 CI then builds `aarch64/x86_64-apple-darwin` + `aarch64/x86_64-unknown-linux-gnu`,
-creates the GitHub Release with tarballs, checksums, and `skua-installer.sh`,
+creates the GitHub Release with tarballs, checksums, and `smew-installer.sh`,
 pushes the Homebrew formula to `siansiansu/homebrew-tap`, and publishes to
 crates.io.
 
 ## One-time setup
 
 1. **Homebrew tap** — create a public repo `siansiansu/homebrew-tap`
-   (can be empty; dist commits `Formula/skua.rb` into it).
+   (can be empty; dist commits `Formula/smew.rb` into it).
 2. **`HOMEBREW_TAP_TOKEN`** — a GitHub personal access token with `repo`
    scope on the tap, saved as an Actions secret on *this* repo.
 3. **`CARGO_REGISTRY_TOKEN`** — a crates.io API token (crates.io →
@@ -43,4 +43,4 @@ dist plan           # sanity-check what a release would produce
 
 - Local preview: `npm install && npm run docs:dev`
 - Content lives in `docs/` (VitePress); deploys automatically to
-  <https://siansiansu.github.io/skua/> on push to main.
+  <https://siansiansu.github.io/smew/> on push to main.

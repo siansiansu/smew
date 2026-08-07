@@ -1,6 +1,6 @@
-# Gruvbox dark skin for skua (https://github.com/morhetz/gruvbox)
-# Copy to ~/.config/skua/skins/<name>.yaml and set `skin: <name>` in
-# ~/.config/skua/config.yaml. Any role may be omitted to keep the default.
+# Gruvbox dark skin for smew (https://github.com/morhetz/gruvbox)
+# Copy to ~/.config/smew/skins/<name>.yaml and set `skin: <name>` in
+# ~/.config/smew/config.yaml. Any role may be omitted to keep the default.
 
 cyan: "#83a598"
 green: &green "#b8bb26"

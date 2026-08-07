@@ -1,6 +1,6 @@
-# Nord skin for skua (https://nordtheme.com)
-# Copy to ~/.config/skua/skins/<name>.yaml and set `skin: <name>` in
-# ~/.config/skua/config.yaml. Any role may be omitted to keep the default.
+# Nord skin for smew (https://nordtheme.com)
+# Copy to ~/.config/smew/skins/<name>.yaml and set `skin: <name>` in
+# ~/.config/smew/config.yaml. Any role may be omitted to keep the default.
 
 cyan: "#88c0d0"
 green: &green "#a3be8c"

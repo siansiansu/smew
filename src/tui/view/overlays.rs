@@ -9,7 +9,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 
 use super::{StateClass, classify_state, hints_line, pad1, refresh_label, state_color, state_mark};
 use crate::theme;
-use crate::tui::{ConfirmKind, Model, age_label, leader_label};
+use crate::tui::{ConfirmKind, FwdField, Model, age_label, leader_label};
 use crate::version;
 
 // ---- profile picker ----
@@ -292,7 +292,7 @@ impl Model {
             accent,
         )));
         lines.push(Line::from(Span::styled(
-            "  run `skua --ssh-config` once · user = ec2-user / ubuntu / …",
+            "  run `smew --ssh-config` once · user = ec2-user / ubuntu / …",
             Style::new().dim(),
         )));
 
@@ -318,7 +318,7 @@ impl Model {
         let th = theme::current();
         let lead = leader_label(&self.leader);
         let mut lines = vec![pad1(Line::from(Span::styled(
-            format!("skua {} — keys", version::VERSION),
+            format!("smew {} — keys", version::VERSION),
             Style::new().add_modifier(Modifier::BOLD),
         )))];
         let sec = |lines: &mut Vec<Line>, title: &str| {
@@ -561,14 +561,19 @@ pub(super) fn draw_forward(m: &Model, f: &mut Frame) {
         field(
             "Remote host",
             &fwd.host,
-            fwd.field == 0,
+            fwd.field == FwdField::Host,
             "empty = the instance itself",
         ),
-        field("Remote port", &fwd.port, fwd.field == 1, "e.g. 5432"),
+        field(
+            "Remote port",
+            &fwd.port,
+            fwd.field == FwdField::Port,
+            "e.g. 5432",
+        ),
         field(
             "Local port",
             &fwd.local,
-            fwd.field == 2,
+            fwd.field == FwdField::Local,
             "empty = same as remote",
         ),
         Line::raw(""),

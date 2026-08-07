@@ -4,7 +4,7 @@
 SSM session (no inbound port 22 is opened). Add the config once:
 
 ```sh
-skua --ssh-config --profile prod --region ap-northeast-1 >> ~/.ssh/config
+smew --ssh-config --profile prod --region ap-northeast-1 >> ~/.ssh/config
 ```
 
 Then use instance ids as hostnames:

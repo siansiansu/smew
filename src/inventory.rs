@@ -20,14 +20,14 @@ fn aws_err(e: &(impl std::error::Error + 'static)) -> String {
 }
 
 /// A security group id + resolved name.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SecurityGroupRef {
     pub id: String,
     pub name: String,
 }
 
 /// The SSM agent's reachability for an instance.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SsmStatus {
     pub online: bool,
     pub agent_version: String,
@@ -35,7 +35,7 @@ pub struct SsmStatus {
 }
 
 /// The merged EC2 + SSM view of a managed host.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Instance {
     pub instance_id: String,
     pub name: String,
@@ -61,7 +61,7 @@ impl Instance {
 }
 
 /// A non-fatal API/permission error surfaced to the UI.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Warning {
     pub op: &'static str,
     pub err: String,
@@ -250,18 +250,9 @@ fn mock_instances() -> Vec<Instance> {
             ping_status: "Online".to_string(),
         })
     };
-    #[allow(clippy::too_many_arguments)]
-    fn mk(
-        name: &str,
-        id: &str,
-        state: &str,
-        ty: &str,
-        az: &str,
-        ip: &str,
-        launched: DateTime<Utc>,
-        ssm: Option<SsmStatus>,
-        tag_pairs: &[(&str, &str)],
-    ) -> Instance {
+    /// The fields every mock host shares (identity, tags, network placement);
+    /// the per-host struct literals below override the rest.
+    fn base(name: &str, id: &str, az: &str, tag_pairs: &[(&str, &str)]) -> Instance {
         let mut tags: BTreeMap<String, String> = tag_pairs
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -272,8 +263,7 @@ fn mock_instances() -> Vec<Instance> {
         Instance {
             instance_id: id.to_string(),
             name: if name.is_empty() { id } else { name }.to_string(),
-            state: state.to_string(),
-            instance_type: ty.to_string(),
+            state: "running".to_string(),
             platform: "Linux/UNIX".to_string(),
             az: az.to_string(),
             vpc_id: "vpc-0dev00000000dev0".to_string(),
@@ -285,115 +275,114 @@ fn mock_instances() -> Vec<Instance> {
                 id: "sg-0dev00000000dev0".to_string(),
                 name: "dev-default".to_string(),
             }],
-            private_ip: ip.to_string(),
-            public_ip: String::new(),
-            launch_time: Some(launched),
             tags,
-            ssm,
+            ..Default::default()
         }
     }
 
-    let mut out = vec![
-        mk(
-            "web-01",
-            "i-0aaaaaaaaaaaaaa01",
-            "running",
-            "t3.small",
-            "ap-northeast-1a",
-            "10.0.1.11",
-            now - chrono::Duration::days(30),
-            online(),
-            &[("env", "dev"), ("role", "web")],
-        ),
-        mk(
-            "web-02",
-            "i-0aaaaaaaaaaaaaa02",
-            "running",
-            "t3.small",
-            "ap-northeast-1c",
-            "10.0.1.12",
-            now - chrono::Duration::days(30),
-            online(),
-            &[("env", "dev"), ("role", "web")],
-        ),
-        mk(
-            "api-01",
-            "i-0bbbbbbbbbbbbbb01",
-            "running",
-            "t3.medium",
-            "ap-northeast-1a",
-            "10.0.2.21",
-            now - chrono::Duration::hours(5),
-            online(),
-            &[("env", "dev"), ("role", "api")],
-        ),
-        mk(
-            "db-bastion",
-            "i-0cccccccccccccc01",
-            "running",
-            "t3.micro",
-            "ap-northeast-1a",
-            "10.0.3.5",
-            now - chrono::Duration::days(90),
-            online(),
-            &[("env", "dev"), ("role", "bastion")],
-        ),
+    vec![
+        Instance {
+            instance_type: "t3.small".to_string(),
+            private_ip: "10.0.1.11".to_string(),
+            launch_time: Some(now - chrono::Duration::days(30)),
+            ssm: online(),
+            ..base(
+                "web-01",
+                "i-0aaaaaaaaaaaaaa01",
+                "ap-northeast-1a",
+                &[("env", "dev"), ("role", "web")],
+            )
+        },
+        Instance {
+            instance_type: "t3.small".to_string(),
+            private_ip: "10.0.1.12".to_string(),
+            launch_time: Some(now - chrono::Duration::days(30)),
+            ssm: online(),
+            ..base(
+                "web-02",
+                "i-0aaaaaaaaaaaaaa02",
+                "ap-northeast-1c",
+                &[("env", "dev"), ("role", "web")],
+            )
+        },
+        Instance {
+            instance_type: "t3.medium".to_string(),
+            private_ip: "10.0.2.21".to_string(),
+            launch_time: Some(now - chrono::Duration::hours(5)),
+            ssm: online(),
+            ..base(
+                "api-01",
+                "i-0bbbbbbbbbbbbbb01",
+                "ap-northeast-1a",
+                &[("env", "dev"), ("role", "api")],
+            )
+        },
+        Instance {
+            instance_type: "t3.micro".to_string(),
+            private_ip: "10.0.3.5".to_string(),
+            launch_time: Some(now - chrono::Duration::days(90)),
+            ssm: online(),
+            ..base(
+                "db-bastion",
+                "i-0cccccccccccccc01",
+                "ap-northeast-1a",
+                &[("env", "dev"), ("role", "bastion")],
+            )
+        },
         // SSM agent registered but unreachable → listed, not connectable.
-        mk(
-            "worker-01",
-            "i-0dddddddddddddd01",
-            "running",
-            "c6i.large",
-            "ap-northeast-1c",
-            "10.0.4.31",
-            now - chrono::Duration::minutes(45),
-            Some(SsmStatus {
+        Instance {
+            instance_type: "c6i.large".to_string(),
+            private_ip: "10.0.4.31".to_string(),
+            launch_time: Some(now - chrono::Duration::minutes(45)),
+            ssm: Some(SsmStatus {
                 online: false,
                 agent_version: "3.2.1550.0".to_string(),
                 ping_status: "ConnectionLost".to_string(),
             }),
-            &[("env", "dev"), ("role", "worker")],
-        ),
+            ..base(
+                "worker-01",
+                "i-0dddddddddddddd01",
+                "ap-northeast-1c",
+                &[("env", "dev"), ("role", "worker")],
+            )
+        },
         // Stopped → no SSM record at all.
-        mk(
-            "cache-01",
-            "i-0eeeeeeeeeeeeee01",
-            "stopped",
-            "t4g.small",
-            "ap-northeast-1a",
-            "10.0.5.8",
-            now - chrono::Duration::days(45),
-            None,
-            &[("env", "dev"), ("role", "cache")],
-        ),
+        Instance {
+            state: "stopped".to_string(),
+            instance_type: "t4g.small".to_string(),
+            private_ip: "10.0.5.8".to_string(),
+            launch_time: Some(now - chrono::Duration::days(45)),
+            ssm: None,
+            ..base(
+                "cache-01",
+                "i-0eeeeeeeeeeeeee01",
+                "ap-northeast-1a",
+                &[("env", "dev"), ("role", "cache")],
+            )
+        },
         // No Name tag → the id doubles as the display name.
-        mk(
-            "",
-            "i-0ffffffffffffff01",
-            "running",
-            "t2.micro",
-            "ap-northeast-1a",
-            "10.0.9.99",
-            now - chrono::Duration::days(400),
-            online(),
-            &[],
-        ),
-    ];
-    let mut win = mk(
-        "windows-01",
-        "i-0abcdefabcdefab01",
-        "running",
-        "m5.large",
-        "ap-northeast-1c",
-        "10.0.6.14",
-        now - chrono::Duration::days(7),
-        online(),
-        &[("env", "dev"), ("role", "win")],
-    );
-    win.platform = "Windows".to_string();
-    win.public_ip = "203.0.113.20".to_string();
-    out.push(win);
-    out
+        Instance {
+            instance_type: "t2.micro".to_string(),
+            private_ip: "10.0.9.99".to_string(),
+            launch_time: Some(now - chrono::Duration::days(400)),
+            ssm: online(),
+            ..base("", "i-0ffffffffffffff01", "ap-northeast-1a", &[])
+        },
+        Instance {
+            instance_type: "m5.large".to_string(),
+            platform: "Windows".to_string(),
+            private_ip: "10.0.6.14".to_string(),
+            public_ip: "203.0.113.20".to_string(),
+            launch_time: Some(now - chrono::Duration::days(7)),
+            ssm: online(),
+            ..base(
+                "windows-01",
+                "i-0abcdefabcdefab01",
+                "ap-northeast-1c",
+                &[("env", "dev"), ("role", "win")],
+            )
+        },
+    ]
 }
 
 impl From<&aws_sdk_ec2::types::Instance> for Instance {

@@ -14,7 +14,11 @@ use aws_config::{BehaviorVersion, Region, SdkConfig};
 /// the first API call).
 pub async fn load(profile: &str, region: &str) -> Result<SdkConfig, String> {
     if !profile.is_empty() && !profiles().iter().any(|p| p == profile) {
-        return Err(format!("failed to get shared config profile, {profile}"));
+        return Err(format!(
+            "profile `{profile}` not found in {} or {}",
+            config_path().display(),
+            credentials_path().display()
+        ));
     }
     let mut b = aws_config::defaults(BehaviorVersion::latest());
     if !profile.is_empty() {
@@ -78,14 +82,13 @@ pub fn profiles() -> Vec<String> {
 }
 
 fn profiles_from(config: &Path, credentials: &Path) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
+    // A BTreeSet gives dedupe across both files plus sorted output.
+    let mut names = std::collections::BTreeSet::new();
     let mut add = |name: &str| {
         let name = name.trim();
-        if name.is_empty() || !seen.insert(name.to_string()) {
-            return;
+        if !name.is_empty() {
+            names.insert(name.to_string());
         }
-        out.push(name.to_string());
     };
 
     parse_sections(config, |section| {
@@ -95,10 +98,9 @@ fn profiles_from(config: &Path, credentials: &Path) -> Vec<String> {
             add(rest);
         }
     });
-    parse_sections(credentials, add);
+    parse_sections(credentials, &mut add);
 
-    out.sort();
-    out
+    names.into_iter().collect()
 }
 
 fn config_path() -> PathBuf {

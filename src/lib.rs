@@ -1,4 +1,4 @@
-//! skua is a local AWS SSM connection tool with an iTerm2-like
+//! smew is a local AWS SSM connection tool with an iTerm2-like
 //! multiplexing / broadcast experience and an interactive resource browser.
 
 pub mod aws;

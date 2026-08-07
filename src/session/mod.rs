@@ -9,4 +9,5 @@ mod driver;
 mod pane;
 
 pub use driver::{PluginDriver, SshOptions};
-pub use pane::{Notifier, Pane};
+
+pub(crate) use pane::{Notifier, Pane};

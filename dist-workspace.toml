@@ -14,5 +14,5 @@ tap = "siansiansu/homebrew-tap"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew", "./publish-crates"]
 # Target platforms to build apps for (Rust target-triple syntax)
-# skua is unix-only (PTY handling); no Windows target.
+# smew is unix-only (PTY handling); no Windows target.
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]

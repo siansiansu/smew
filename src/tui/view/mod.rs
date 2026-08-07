@@ -40,15 +40,13 @@ pub(crate) fn draw(m: &Model, f: &mut Frame) {
 
 pub(super) fn pad1(line: Line) -> Line {
     // One cell of horizontal padding: a leading space.
-    let mut spans = vec![Span::raw(" ")];
-    spans.extend(line.spans);
-    Line::from(spans)
+    Line::from_iter(std::iter::once(Span::raw(" ")).chain(line.spans))
 }
 
 fn draw_loading(f: &mut Frame) {
     let lines = vec![
         pad1(Line::from(Span::styled(
-            format!("skua {}", version::VERSION),
+            format!("smew {}", version::VERSION),
             Style::new().add_modifier(Modifier::BOLD),
         ))),
         pad1(Line::from(Span::styled(
@@ -60,7 +58,7 @@ fn draw_loading(f: &mut Frame) {
 }
 
 /// EC2 lifecycle states bucketed for display (dot, color, chip, counts).
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum StateClass {
     Running,
     Down,
@@ -95,7 +93,7 @@ pub(super) fn state_color(state: &str) -> Color {
 }
 
 /// The colored key:action hint bar.
-pub(super) fn hints_line(pairs: &[(&str, &str)]) -> Line<'static> {
+pub(super) fn hints_line(pairs: &[(&'static str, &'static str)]) -> Line<'static> {
     let th = theme::current();
     let mut spans = Vec::new();
     for (i, (key, act)) in pairs.iter().enumerate() {
@@ -103,7 +101,7 @@ pub(super) fn hints_line(pairs: &[(&str, &str)]) -> Line<'static> {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(
-            key.to_string(),
+            *key,
             Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(format!(":{act}"), Style::new().fg(th.gray)));
@@ -179,9 +177,8 @@ mod tests {
         let mut m = test_model();
         m.mode = Mode::Session;
         let argv: Vec<String> = ["sh", "-c", "echo pane-marker; sleep 30"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+            .map(String::from)
+            .into();
         let notify = std::sync::Arc::new(|| {});
         let p1 = crate::session::Pane::start("host-a", &argv, 40, 10, notify.clone()).unwrap();
         let p2 = crate::session::Pane::start("host-b", &argv, 40, 10, notify).unwrap();

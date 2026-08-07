@@ -186,7 +186,7 @@ impl Model {
     pub(crate) fn visible_data_rows(&self) -> usize {
         // title + summary + filter + header + rule + status + hints = 7 chrome
         // rows, plus 2 spare rows left blank at the bottom.
-        (self.height as i32 - 9).max(1) as usize
+        (self.height as usize).saturating_sub(9).max(1)
     }
 
     fn table_key(&mut self, s: &str) {
@@ -347,39 +347,28 @@ impl Model {
 /// Applies the committed filter stack (AND) plus the in-progress term. Each
 /// term may be prefixed with "!" to negate (exclude).
 fn passes_filters(inst: &Instance, stack: &[String], current: &str) -> bool {
-    for t in stack {
-        if !matches_term(inst, t) {
-            return false;
-        }
-    }
-    if !current.is_empty() {
-        return matches_term(inst, current);
-    }
-    true
+    stack.iter().all(|t| matches_term(inst, t))
+        && (current.is_empty() || matches_term(inst, current))
 }
 
 fn matches_term(inst: &Instance, term: &str) -> bool {
-    let mut term = term.trim().to_lowercase();
-    let neg = term.starts_with('!');
-    if neg {
-        term = term[1..].trim().to_string();
-    }
+    let term = term.trim();
+    let (neg, term) = match term.strip_prefix('!') {
+        Some(rest) => (true, rest.trim()),
+        None => (false, term),
+    };
     if term.is_empty() {
         return true;
     }
-    let ok = matches_tokens(inst, &term);
+    let ok = matches_tokens(inst, &term.to_lowercase());
     if neg { !ok } else { ok }
 }
 
-/// Whether an instance passes a filter term. Matching is by substring
-/// (predictable — no fzf-style character scatter). Whitespace splits the
-/// term into tokens that are AND-ed, so "prod redis" matches names/fields
-/// containing both, in any order.
+/// Whether an instance passes a filter term (already lowercased). Matching
+/// is by substring (predictable — no fzf-style character scatter).
+/// Whitespace splits the term into tokens that are AND-ed, so "prod redis"
+/// matches names/fields containing both, in any order.
 fn matches_tokens(inst: &Instance, q: &str) -> bool {
-    let q = q.trim().to_lowercase();
-    if q.is_empty() {
-        return true;
-    }
     let hay = search_text(inst);
     q.split_whitespace().all(|tok| hay.contains(tok))
 }
@@ -408,11 +397,12 @@ fn search_text(inst: &Instance) -> String {
 }
 
 pub(crate) fn max_name_width(insts: &[Instance]) -> usize {
-    let mut w = "NAME".len();
-    for inst in insts {
-        w = w.max(unicode_width::UnicodeWidthStr::width(inst.name.as_str()));
-    }
-    w
+    insts
+        .iter()
+        .map(|inst| unicode_width::UnicodeWidthStr::width(inst.name.as_str()))
+        .max()
+        .unwrap_or(0)
+        .max("NAME".len())
 }
 
 #[cfg(test)]

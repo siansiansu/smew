@@ -1,13 +1,13 @@
-# bash completion for skua.
+# bash completion for smew.
 #
 # Install:
-#   cp completions/skua.bash ~/.skua-completion.bash
-#   echo 'source ~/.skua-completion.bash' >> ~/.bashrc
+#   cp completions/smew.bash ~/.smew-completion.bash
+#   echo 'source ~/.smew-completion.bash' >> ~/.bashrc
 #
 # --profile completes from ~/.aws/config and ~/.aws/credentials directly
 # (no aws command is run).
 
-_skua_profiles() {
+_smew_profiles() {
   local f cfg="${AWS_CONFIG_FILE:-$HOME/.aws/config}"
   local cred="${AWS_SHARED_CREDENTIALS_FILE:-$HOME/.aws/credentials}"
   for f in "$cfg" "$cred"; do
@@ -16,14 +16,14 @@ _skua_profiles() {
   done
 }
 
-_skua() {
+_smew() {
   local cur prev
   cur="${COMP_WORDS[COMP_CWORD]}"
   prev="${COMP_WORDS[COMP_CWORD-1]}"
 
   case "$prev" in
     --profile)
-      COMPREPLY=($(compgen -W "$(_skua_profiles)" -- "$cur"))
+      COMPREPLY=($(compgen -W "$(_smew_profiles)" -- "$cur"))
       return
       ;;
     --region)
@@ -39,5 +39,5 @@ _skua() {
   COMPREPLY=($(compgen -W "--profile --region --dry-run --dev -h --help" -- "$cur"))
 }
 
-complete -F _skua skua
-complete -F _skua ./target/release/skua
+complete -F _smew smew
+complete -F _smew ./target/release/smew

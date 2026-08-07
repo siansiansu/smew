@@ -25,7 +25,7 @@ impl Model {
 
     /// Rough initial pane height; relayout_session fixes it right after.
     fn initial_pane_rows(&self) -> u16 {
-        (self.height as i32 - 4).max(1) as u16
+        self.height.saturating_sub(4).max(1)
     }
 
     /// Opens the given instances as tiled panes and enters the session view.
@@ -38,7 +38,9 @@ impl Model {
         if self.driver.is_none() {
             return;
         }
-        let cols = (self.width as i32 / targets.len() as i32 - 2).max(1) as u16;
+        let cols = ((self.width as usize / targets.len())
+            .saturating_sub(2)
+            .max(1)) as u16;
         let rows = self.initial_pane_rows();
         // Release any panes from a previous session before replacing them.
         for p in self.panes.drain(..) {

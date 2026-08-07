@@ -3,7 +3,7 @@
 
 use crossterm::event::KeyEvent;
 
-use super::{ForwardForm, Mode, Model};
+use super::{ForwardForm, FwdField, Mode, Model};
 use crate::inventory::Instance;
 use crate::tui::input::Input;
 
@@ -20,9 +20,9 @@ impl Model {
     /// The Input of the currently focused form field.
     pub(crate) fn forward_field_mut(&mut self) -> &mut Input {
         match self.fwd.field {
-            0 => &mut self.fwd.host,
-            1 => &mut self.fwd.port,
-            _ => &mut self.fwd.local,
+            FwdField::Host => &mut self.fwd.host,
+            FwdField::Port => &mut self.fwd.port,
+            FwdField::Local => &mut self.fwd.local,
         }
     }
 
@@ -30,11 +30,11 @@ impl Model {
         match s {
             "ctrl+c" => self.quit = true,
             "esc" => self.mode = Mode::List,
-            "tab" | "down" | "enter" if s != "enter" || self.fwd.field < 2 => {
+            "tab" | "down" | "enter" if s != "enter" || self.fwd.field != FwdField::Local => {
                 // enter advances until the last field, where it submits
-                self.fwd.field = (self.fwd.field + 1) % 3;
+                self.fwd.field = self.fwd.field.next();
             }
-            "shift+tab" | "up" => self.fwd.field = (self.fwd.field + 2) % 3,
+            "shift+tab" | "up" => self.fwd.field = self.fwd.field.prev(),
             "enter" => self.submit_forward(),
             _ => {
                 self.forward_field_mut().handle(k);
@@ -79,7 +79,14 @@ impl Model {
             self.fwd.error = "no AWS profile loaded".to_string();
             return;
         };
-        let argv = drv.port_forward_command(&self.fwd.target.instance_id, local, &host, port);
+        let argv = match drv.port_forward_command(&self.fwd.target.instance_id, local, &host, port)
+        {
+            Ok(argv) => argv,
+            Err(e) => {
+                self.fwd.error = e;
+                return;
+            }
+        };
         let title = if host.is_empty() {
             format!("fwd :{local} → {}:{port}", self.fwd.target.name)
         } else {
@@ -93,7 +100,7 @@ impl Model {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_model;
+    use super::super::{FwdField, test_model};
     use crate::inventory::Instance;
     use crate::tui::Mode;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -119,15 +126,15 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(m.mode, Mode::Forward);
-        assert_eq!(m.fwd.field, 0);
+        assert_eq!(m.fwd.field, FwdField::Host);
 
         // enter on a non-last field advances instead of submitting
         key(&mut m, KeyCode::Enter);
-        assert_eq!(m.fwd.field, 1);
+        assert_eq!(m.fwd.field, FwdField::Port);
         key(&mut m, KeyCode::Tab);
-        assert_eq!(m.fwd.field, 2);
+        assert_eq!(m.fwd.field, FwdField::Local);
         key(&mut m, KeyCode::Up);
-        assert_eq!(m.fwd.field, 1);
+        assert_eq!(m.fwd.field, FwdField::Port);
 
         // submit without a remote port → validation error
         key(&mut m, KeyCode::Down);
@@ -136,11 +143,11 @@ mod tests {
         assert_eq!(m.mode, Mode::Forward);
 
         // bad host charset is rejected (JSON-injection guard)
-        m.fwd.field = 0;
+        m.fwd.field = FwdField::Host;
         type_str(&mut m, "bad\"host");
-        m.fwd.field = 1;
+        m.fwd.field = FwdField::Port;
         type_str(&mut m, "5432");
-        m.fwd.field = 2;
+        m.fwd.field = FwdField::Local;
         key(&mut m, KeyCode::Enter);
         assert!(m.fwd.error.contains("remote host"), "{}", m.fwd.error);
 
@@ -153,7 +160,7 @@ mod tests {
     fn typing_clears_error() {
         let mut m = test_model();
         m.open_forward_form(Instance::default());
-        m.fwd.field = 2;
+        m.fwd.field = FwdField::Local;
         key(&mut m, KeyCode::Enter); // invalid submit
         assert!(!m.fwd.error.is_empty());
         key(&mut m, KeyCode::Char('8'));

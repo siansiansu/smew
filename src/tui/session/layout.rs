@@ -15,8 +15,8 @@ pub(crate) struct PaneRect {
 /// cells for the border and 1 line for the pane title.
 fn inner_dims(outer_w: u16, outer_h: u16) -> (u16, u16) {
     (
-        (outer_w as i32 - 2).max(1) as u16,
-        (outer_h as i32 - 3).max(1) as u16,
+        outer_w.saturating_sub(2).max(1),
+        outer_h.saturating_sub(3).max(1),
     )
 }
 
@@ -48,7 +48,7 @@ impl Model {
     pub(crate) fn pane_rects(&self) -> Vec<PaneRect> {
         let n = self.panes.len();
         let mut rects = Vec::with_capacity(n);
-        let avail_h = (self.height as i32 - 1).max(4) as usize;
+        let avail_h = (self.height as usize).saturating_sub(1).max(4);
         let (ncols, nrows) = self.grid_dims();
         let base_h = avail_h / nrows;
         for i in 0..n {
@@ -85,7 +85,7 @@ impl Model {
             // a single visible pane: borderless full-width, reserving 1 line
             // for the header and 1 for the pane title.
             if let Some(p) = self.panes.get(self.focus) {
-                p.resize(self.width.max(1), (self.height as i32 - 2).max(1) as u16);
+                p.resize(self.width.max(1), self.height.saturating_sub(2).max(1));
             }
             return;
         }

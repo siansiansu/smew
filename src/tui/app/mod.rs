@@ -36,7 +36,7 @@ pub enum Msg {
     Loaded(ListResult),
     Version(String),
     ActionDone {
-        verb: String,
+        verb: &'static str,
         name: String,
         err: Option<String>,
     },
@@ -70,8 +70,34 @@ pub(crate) struct ForwardForm {
     pub(crate) host: Input,
     pub(crate) port: Input,
     pub(crate) local: Input,
-    pub(crate) field: usize, // 0 host · 1 port · 2 local
+    pub(crate) field: FwdField,
     pub(crate) error: String,
+}
+
+/// Which port-forward form field has focus.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub(crate) enum FwdField {
+    #[default]
+    Host,
+    Port,
+    Local,
+}
+
+impl FwdField {
+    pub(crate) fn next(self) -> FwdField {
+        match self {
+            FwdField::Host => FwdField::Port,
+            FwdField::Port => FwdField::Local,
+            FwdField::Local => FwdField::Host,
+        }
+    }
+    pub(crate) fn prev(self) -> FwdField {
+        match self {
+            FwdField::Host => FwdField::Local,
+            FwdField::Port => FwdField::Host,
+            FwdField::Local => FwdField::Port,
+        }
+    }
 }
 
 /// What the confirmation dialog is asking about.
@@ -356,7 +382,7 @@ impl Model {
         self.rt.spawn(async move {
             let err = inv.reboot(&inst.instance_id).await.err();
             let _ = tx.send(Msg::ActionDone {
-                verb: "reboot".into(),
+                verb: "reboot",
                 name: inst.name,
                 err,
             });

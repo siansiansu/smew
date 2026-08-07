@@ -1,85 +1,69 @@
 <p align="center">
-  <img src="./docs/public/logo.svg" alt="skua logo" width="140">
+  <img src="./docs/public/logo.svg" alt="smew logo" width="140">
 </p>
 
-<h1 align="center">skua</h1>
+<h1 align="center">smew</h1>
 
 <p align="center">
-A local AWS SSM connection tool: an interactive inventory browser plus
-iTerm2-like multi-pane / broadcast sessions. No server, no inbound port 22 — access control
-and audit stay on AWS (IAM / CloudTrail).
+A terminal UI for AWS SSM: browse your EC2 inventory and open shell or
+port-forwarding sessions with iTerm2-like multi-pane / broadcast support.
+No server, no inbound port 22 — access control and audit stay on AWS.
 </p>
 
 <p align="center">
-  <a href="https://siansiansu.github.io/skua/">Documentation</a> ·
-  <a href="https://siansiansu.github.io/skua/guide/installation">Install</a> ·
-  <a href="https://siansiansu.github.io/skua/guide/quick-start">Quick start</a>
+  <a href="https://crates.io/crates/smew"><img src="https://img.shields.io/crates/v/smew.svg" alt="crates.io"></a>
+  <a href="https://github.com/siansiansu/smew/actions/workflows/release.yml"><img src="https://github.com/siansiansu/smew/actions/workflows/release.yml/badge.svg" alt="Release"></a>
+  <a href="https://siansiansu.github.io/smew/"><img src="https://img.shields.io/badge/docs-siansiansu.github.io%2Fsmew-blue.svg" alt="Documentation"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-## Install
+## Features
+
+- **Inventory browser** — EC2 detail + SSM reachability, sorting, filtering,
+  vim-style navigation
+- **Multi-pane sessions** — mark hosts, open split panes of live SSM shells;
+  broadcast input, layouts, zoom, scrollback
+- **Port forwarding** — SSM port-forwarding sessions from the same list
+- **SSH-over-SSM** — ssh / scp / rsync / VS Code Remote with no open port 22
+- AWS profile picker, skins, mouse support, `--dry-run`, `--dev` mode
+
+## Installation
 
 ```sh
-brew install siansiansu/tap/skua        # Homebrew (macOS / Linux)
+brew install siansiansu/tap/smew        # Homebrew (macOS / Linux)
+```
+
+```sh
+cargo install smew                      # from source (Rust 1.88+)
 ```
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/siansiansu/skua/releases/latest/download/skua-installer.sh | sh
-```
-
-```sh
-cargo install skua                      # from source (Rust 1.90+)
+  https://github.com/siansiansu/smew/releases/latest/download/smew-installer.sh | sh
 ```
 
 Prebuilt binaries for macOS / Linux (x86_64 + arm64) are on the
-[releases page](https://github.com/siansiansu/skua/releases).
+[releases page](https://github.com/siansiansu/smew/releases).
+To run in Docker: `make docker-build && make docker-run`.
 
-## Features
+Requires the [`aws` CLI](https://docs.aws.amazon.com/cli/) and the
+[`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html).
 
-- **Inventory browser** — EC2 detail + SSM reachability, sorting,
-  nested/reverse filtering, vim-style jumps
-- **Multi-pane sessions** — mark hosts with `Space`, `s` opens split panes of
-  live SSM shells; leader `Ctrl+b` for broadcast, layouts, zoom, scrollback
-- **SSH-over-SSM** via `--ssh-config` — ssh/scp/rsync/VSCode Remote with no
-  open port 22 ([guide](./docs/guide/ssh-over-ssm.md))
-- AWS profile picker + in-app switching, mouse support, reboot, help,
-  auto-refresh, `--dry-run`, shell completion
-
-## Prerequisites
-
-- [`aws` CLI](https://docs.aws.amazon.com/cli/) and
-  [`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
-- IAM (minimal): `ssm:StartSession` / `TerminateSession` / `ResumeSession`,
-  `ssm:DescribeInstanceInformation`, `ec2:DescribeInstances`. Optional:
-  `ec2:DescribeSecurityGroups` / `DescribeSubnets` / `DescribeVpcs` (detail),
-  `ec2:RebootInstances`, `ssm:GetParameter` (update check),
-  `ec2-instance-connect:SendSSHPublicKey` (`--ssh-config` ephemeral mode).
-  Missing describe-class permissions degrade gracefully with the reason in
-  the status bar — never a hard failure.
-
-## Run
+## Quick start
 
 ```sh
-skua                                        # opens the profile picker
-skua --profile prod --region ap-northeast-1
-skua --dry-run --profile prod               # inventory check, no TTY
-skua --dev                                  # mock inventory + local-shell sessions, no AWS
+smew                                        # opens the profile picker
+smew --profile prod --region ap-northeast-1
 ```
-
-To build from source: `cargo build --release` (Rust 1.90+) →
-`target/release/skua`.
 
 Press `?` in-app for the full keybindings.
 
-## Config
+## Documentation
 
-Optional `~/.config/skua/config.yaml` — default profile/region, auto-refresh,
-leader key. CLI flags override it. See
-[`config.example.yaml`](./config.example.yaml).
+Everything else — configuration, keybindings, skins, IAM permissions, and
+SSH / scp / rsync over SSM — lives at
+**[siansiansu.github.io/smew](https://siansiansu.github.io/smew/)**.
 
-## Docs
+## License
 
-Full documentation lives at
-**[siansiansu.github.io/skua](https://siansiansu.github.io/skua/)** —
-installation, quick start, keybindings, configuration, and
-[SSH / scp / rsync over SSM](./docs/guide/ssh-over-ssm.md).
+[MIT](./LICENSE)

@@ -42,7 +42,7 @@ fn main() {
         .map(|v| v.split_whitespace().take(2).collect::<Vec<_>>().join(" "))
         .unwrap_or_default();
 
-    println!("cargo:rustc-env=SKUA_COMMIT={commit}");
-    println!("cargo:rustc-env=SKUA_COMMIT_TIME={when}");
-    println!("cargo:rustc-env=SKUA_RUSTC={rustv}");
+    println!("cargo:rustc-env=SMEW_COMMIT={commit}");
+    println!("cargo:rustc-env=SMEW_COMMIT_TIME={when}");
+    println!("cargo:rustc-env=SMEW_RUSTC={rustv}");
 }

@@ -63,6 +63,8 @@ impl Model {
             .filter(|(i, _)| *i != NAME_COL)
             .map(|(_, c)| c.width)
             .sum();
+        // Signed on purpose: fill goes negative on narrow terminals, and the
+        // comparison below must see that rather than a saturated zero.
         let fill = self.width as i64 - fixed as i64 - 2 * cols.len() as i64;
         if fill > name_w as i64 {
             name_w = fill as usize;
@@ -126,7 +128,7 @@ pub(super) fn draw_list(m: &Model, f: &mut Frame) {
 }
 
 fn title_line(m: &Model) -> Line<'static> {
-    let mut title = format!("skua {} — SSM instances", version::VERSION);
+    let mut title = format!("smew {} — SSM instances", version::VERSION);
     if !m.profile.is_empty() {
         title.push_str("  ·  ");
         title.push_str(&m.profile);
@@ -178,14 +180,15 @@ fn summary_line(m: &Model) -> Line<'static> {
 
 /// Tallies instances by lifecycle state for the summary line.
 fn counts(m: &Model) -> (usize, usize, usize, usize) {
-    let (mut running, mut stopped, mut other) = (0, 0, 0);
-    for inst in &m.all {
-        match classify_state(&inst.state) {
-            StateClass::Running => running += 1,
-            StateClass::Down => stopped += 1,
-            StateClass::Other => other += 1,
-        }
-    }
+    let [running, stopped, other] = m.all.iter().fold([0usize; 3], |mut acc, inst| {
+        let slot = match classify_state(&inst.state) {
+            StateClass::Running => 0,
+            StateClass::Down => 1,
+            StateClass::Other => 2,
+        };
+        acc[slot] += 1;
+        acc
+    });
     (m.all.len(), running, stopped, other)
 }
 

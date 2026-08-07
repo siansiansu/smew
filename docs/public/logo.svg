@@ -2,15 +2,29 @@
   <!-- squircle -->
   <rect x="32" y="32" width="448" height="448" rx="100" fill="#000000"/>
 
-  <!-- skua in flight: swept wings, small head, pointed tail -->
+  <!-- drake smew ("panda duck") swimming: white body, black eye patch,
+       drooping crest at the back of the head, thin flank bar -->
   <path fill="#ffffff" d="
-    M 92 248
-    C 158 172, 220 180, 244 212
-    C 249 198, 263 198, 268 212
-    C 292 180, 354 172, 420 248
-    C 356 216, 306 234, 281 260
-    L 256 352
-    L 231 260
-    C 206 234, 156 216, 92 248
+    M 118 226
+    C 134 216, 152 208, 166 204
+    C 172 178, 192 158, 218 152
+    C 238 146, 258 148, 270 156
+    C 284 162, 292 172, 294 184
+    C 286 180, 276 180, 268 184
+    C 276 192, 280 202, 278 212
+    C 272 206, 264 202, 256 202
+    C 258 212, 260 220, 264 226
+    C 300 228, 348 226, 386 224
+    C 408 220, 424 218, 436 214
+    C 434 240, 424 262, 406 280
+    C 370 308, 298 322, 238 316
+    C 196 310, 166 292, 152 266
+    C 144 250, 132 236, 118 226
     Z"/>
+
+  <!-- black eye patch between bill base and eye -->
+  <ellipse cx="196" cy="210" rx="25" ry="16" transform="rotate(-14 196 210)" fill="#000000"/>
+
+  <!-- thin black flank bar (smew's breast bar) -->
+  <path d="M 254 248 L 238 302" stroke="#000000" stroke-width="7" stroke-linecap="round" fill="none"/>
 </svg>

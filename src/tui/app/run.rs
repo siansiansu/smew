@@ -67,11 +67,8 @@ pub fn run(opts: Options) -> std::io::Result<()> {
         model.handle(msg);
         // Drain whatever else is queued before re-rendering (bounded so a
         // flood of pane output can't starve the renderer).
-        for _ in 0..128 {
-            match rx.try_recv() {
-                Ok(m) => model.handle(m),
-                Err(_) => break,
-            }
+        for m in rx.try_iter().take(128) {
+            model.handle(m);
         }
         if model.should_quit() {
             break Ok(());

@@ -1,43 +1,67 @@
 # Installation
 
-skua ships as a single static binary for macOS and Linux (both x86_64 and
+smew ships as a single static binary for macOS and Linux (both x86_64 and
 arm64).
 
 ## Homebrew (macOS / Linux)
 
 ```sh
-brew install siansiansu/tap/skua
+brew install siansiansu/tap/smew
 ```
 
 ## Shell installer
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/siansiansu/skua/releases/latest/download/skua-installer.sh | sh
+  https://github.com/siansiansu/smew/releases/latest/download/smew-installer.sh | sh
 ```
 
 ## Cargo
 
 ```sh
-cargo install skua        # builds from source (Rust 1.90+)
-cargo binstall skua       # or: fetch the prebuilt release binary
+cargo install smew        # builds from source (Rust 1.88+)
+cargo binstall smew       # or: fetch the prebuilt release binary
 ```
 
 ## Prebuilt binaries
 
 Tarballs with SHA-256 checksums for every release are on the
-[GitHub Releases page](https://github.com/siansiansu/skua/releases).
+[GitHub Releases page](https://github.com/siansiansu/smew/releases).
 
 ## From source
 
 ```sh
-git clone https://github.com/siansiansu/skua && cd skua
-cargo build --release     # → target/release/skua
+git clone https://github.com/siansiansu/smew && cd smew
+cargo build --release     # → target/release/smew
 ```
+
+## Docker
+
+The repo ships a multi-stage `Dockerfile` whose image bundles smew with the
+AWS CLI v2 and the session-manager-plugin (nothing to install on the host)
+and runs as the non-root user `smew`. It is not published to any registry —
+build it locally:
+
+```sh
+make docker-build         # or: docker build -t smew .
+```
+
+Run it with your AWS config mounted read-only (`make docker-run` does the
+same):
+
+```sh
+docker run -it --rm \
+  -v $HOME/.aws:/home/smew/.aws:ro \
+  -e AWS_PROFILE -e AWS_REGION \
+  smew
+```
+
+For SSO profiles, run `aws sso login` on the **host** first — the cached
+token under `~/.aws/sso/` comes along with the same mount.
 
 ## Prerequisites
 
-skua drives the official AWS tooling — you need:
+smew drives the official AWS tooling — you need:
 
 - the [`aws` CLI](https://docs.aws.amazon.com/cli/)
 - the [`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
@@ -45,6 +69,9 @@ skua drives the official AWS tooling — you need:
 ```sh
 brew install awscli session-manager-plugin
 ```
+
+(The [Docker image](#docker) already includes both. `smew --dev` needs
+neither — it runs the whole TUI offline against a mock inventory.)
 
 ### IAM permissions
 
@@ -67,19 +94,19 @@ the status bar, never a hard failure.
 
 Tab-completion of `--profile` values (reads `~/.aws/config` +
 `~/.aws/credentials` directly). The files ship in the repo's
-[`completions/`](https://github.com/siansiansu/skua/tree/main/completions)
+[`completions/`](https://github.com/siansiansu/smew/tree/main/completions)
 directory.
 
 ::: code-group
 
 ```sh [zsh]
-mkdir -p ~/.zsh/completions && cp completions/_skua ~/.zsh/completions/
+mkdir -p ~/.zsh/completions && cp completions/_smew ~/.zsh/completions/
 # in ~/.zshrc, before compinit:  fpath=(~/.zsh/completions $fpath)
 ```
 
 ```sh [bash]
-cp completions/skua.bash ~/.skua-completion.bash
-echo 'source ~/.skua-completion.bash' >> ~/.bashrc
+cp completions/smew.bash ~/.smew-completion.bash
+echo 'source ~/.smew-completion.bash' >> ~/.bashrc
 ```
 
 :::

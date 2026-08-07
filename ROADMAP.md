@@ -16,7 +16,7 @@ Optionally offer to run the login command from the TUI.
 
 ## 2. Auth support matrix (verify + document) ✅ (2026-08 — docs/guide/authentication.md)
 
-Because skua rides the SDK default credential chain, most auth methods should
+Because smew rides the SDK default credential chain, most auth methods should
 already work. Verify each and document the result as a support matrix in the
 docs site:
 
@@ -41,7 +41,7 @@ colors, and the config selects one by name.
   `Color::Indexed` literals in `view/overlays.rs`, `view/session.rs`,
   `view/list.rs`) into a single `Theme` struct with named roles; the current
   values become the built-in default skin.
-- Load skins from `~/.config/skua/skins/<name>.yaml`; select via
+- Load skins from `~/.config/smew/skins/<name>.yaml`; select via
   `skin: <name>` in `config.yaml`. A missing/invalid skin fails at startup
   with the resolution path named (the TUI would hide a fallback warning).
 - Support hex (`"#ff79c6"`), 256-color index, and `default` (terminal

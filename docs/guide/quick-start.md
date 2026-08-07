@@ -3,13 +3,13 @@
 ## Launch
 
 ```sh
-skua                                        # opens the AWS profile picker
-skua --profile prod --region ap-northeast-1 # skip the picker
-skua --dry-run --profile prod               # print inventory as a table, no TUI
-skua --dev                                  # developer mode: no AWS needed
+smew                                        # opens the AWS profile picker
+smew --profile prod --region ap-northeast-1 # skip the picker
+smew --dry-run --profile prod               # print inventory as a table, no TUI
+smew --dev                                  # developer mode: no AWS needed
 ```
 
-With no flags, skua lists the profiles from `~/.aws/config` — pick one and it
+With no flags, smew lists the profiles from `~/.aws/config` — pick one and it
 loads the region's EC2 inventory with live SSM reachability (🟢 reachable /
 🔴 not).
 
@@ -33,6 +33,21 @@ multi-pane broadcast, port-forward forms and every keybinding can be tried
 - `s` on a host opens an SSM shell.
 - `Space` marks multiple hosts, then `s` opens them **as split panes** in one
   session — an iTerm2-like multiplexer over SSM.
+
+## Port forward
+
+`F` on a host opens the port-forward form:
+
+- leave **remote host** empty to forward to a port on the instance itself
+  (e.g. a local web UI on `:8080`)
+- set it to reach a private endpoint *via* the instance — an RDS database,
+  an internal service — with no bastion and no open ports
+- **local port** defaults to the same as the remote port
+
+The tunnel runs as a session pane (added to the current session, or a new
+one), so it lives alongside your shells; close the pane to end it. Example:
+forward local `15432` to `mydb.xxxx.rds.amazonaws.com:5432` via a host in
+the VPC, then `psql -h 127.0.0.1 -p 15432` locally.
 
 Inside a session, press the leader (default `Ctrl+b`), then:
 

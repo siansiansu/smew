@@ -3,7 +3,7 @@
 //! `skin` key in config.yaml.
 //!
 //! Resolution order for a skin name: built-in (default, dracula,
-//! gruvbox-dark, nord) → ~/.config/skua/skins/<name>.yaml. A skin file may
+//! gruvbox-dark, nord) → ~/.config/smew/skins/<name>.yaml. A skin file may
 //! set any subset of roles; unset roles keep the default theme's value.
 //! The embedded terminal content of session panes is never themed — it keeps
 //! whatever colors the remote shell emits.
@@ -140,9 +140,11 @@ enum ColorDef {
     Str(String),
 }
 
-impl ColorDef {
-    fn to_color(&self) -> Result<Color, String> {
-        let s = match self {
+impl TryFrom<&ColorDef> for Color {
+    type Error = String;
+
+    fn try_from(def: &ColorDef) -> Result<Color, String> {
+        let s = match def {
             ColorDef::Num(i) => return Ok(Color::Indexed(*i)),
             ColorDef::Str(s) => s.trim(),
         };
@@ -172,7 +174,8 @@ impl SkinFile {
         macro_rules! set {
             ($($f:ident),*) => {
                 $(if let Some(c) = self.$f {
-                    base.$f = c.to_color().map_err(|e| format!("{}: {e}", stringify!($f)))?;
+                    base.$f =
+                        Color::try_from(&c).map_err(|e| format!("{}: {e}", stringify!($f)))?;
                 })*
             };
         }
@@ -217,14 +220,14 @@ fn parse(yaml: &str) -> Result<Theme, String> {
     f.apply(Theme::default())
 }
 
-/// The user skin directory: ~/.config/skua/skins (honors XDG_CONFIG_HOME).
+/// The user skin directory: ~/.config/smew/skins (honors XDG_CONFIG_HOME).
 fn skins_dir() -> Option<PathBuf> {
     if let Ok(x) = std::env::var("XDG_CONFIG_HOME")
         && !x.is_empty()
     {
-        return Some(PathBuf::from(x).join("skua").join("skins"));
+        return Some(PathBuf::from(x).join("smew").join("skins"));
     }
-    Some(dirs::home_dir()?.join(".config").join("skua").join("skins"))
+    Some(dirs::home_dir()?.join(".config").join("smew").join("skins"))
 }
 
 /// Resolves a skin name to a Theme. "" and "default" mean the built-in

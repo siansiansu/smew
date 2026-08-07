@@ -140,21 +140,21 @@ impl Model {
     /// content line count; one screen row is reserved for the hint bar.
     pub(super) fn overlay_scroll_key(&mut self, s: &str, total: usize) {
         let vis = (self.height as usize).saturating_sub(1).max(1);
-        let max = total.saturating_sub(vis) as i64;
-        let page = vis as i64 - 1;
-        let cur = self.overlay_scroll as i64;
+        let max = total.saturating_sub(vis);
+        let page = vis.saturating_sub(1);
+        let cur = self.overlay_scroll;
         let next = match s {
-            "down" | "j" => cur + 1,
-            "up" | "k" => cur - 1,
-            "pgdown" | "ctrl+f" | "space" => cur + page,
-            "pgup" | "ctrl+b" => cur - page,
-            "ctrl+d" => cur + page / 2,
-            "ctrl+u" => cur - page / 2,
+            "down" | "j" => cur.saturating_add(1),
+            "up" | "k" => cur.saturating_sub(1),
+            "pgdown" | "ctrl+f" | "space" => cur.saturating_add(page),
+            "pgup" | "ctrl+b" => cur.saturating_sub(page),
+            "ctrl+d" => cur.saturating_add(page / 2),
+            "ctrl+u" => cur.saturating_sub(page / 2),
             "g" | "home" => 0,
             "G" | "end" => max,
             _ => return,
         };
-        self.overlay_scroll = next.clamp(0, max.max(0)) as usize;
+        self.overlay_scroll = next.min(max);
     }
 
     pub(super) fn update_confirm(&mut self, s: &str) {

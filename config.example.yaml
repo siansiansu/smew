@@ -1,7 +1,9 @@
-# skua config — copy to ~/.config/skua/config.yaml (all fields optional).
+# smew config — copy to ~/.config/smew/config.yaml (all fields optional).
 # CLI flags (--profile / --region) take precedence over these values.
+# Unknown keys are an error, so a typo'd option never silently falls back
+# to its default.
 
-# Default AWS profile to use when --profile is not given. If empty, skua
+# Default AWS profile to use when --profile is not given. If empty, smew
 # shows the profile picker at startup.
 default_profile: ""
 
@@ -13,7 +15,8 @@ default_region: ap-northeast-1
 refresh_interval: "30s"
 
 # Multiplexer leader (prefix) key inside a split session. Press it, then a
-# command key (h/l focus, b broadcast, x close, d detach). Default "ctrl+b".
+# command key (h/l focus, b broadcast, x close pane, d close session).
+# Default "ctrl+b".
 # Examples: "ctrl+a", "ctrl+ " (ctrl+space).
 session_leader: "ctrl+b"
 
@@ -24,13 +27,13 @@ session_leader: "ctrl+b"
 mouse: true
 
 # Update check: the SSM Parameter Store name holding the latest published
-# version. skua reads it on startup and shows an "⬆ update" badge if the
-# running version differs. Default "/skua/latest-version".
-version_param: "/skua/latest-version"
+# version. smew reads it on startup and shows an "⬆ update" badge if the
+# running version differs. Default "/smew/latest-version".
+version_param: "/smew/latest-version"
 # Set true to turn the update check off entirely.
 disable_version_check: false
 
 # Color theme: a built-in name (default, dracula, gruvbox-dark, nord) or a
-# custom skin at ~/.config/skua/skins/<name>.yaml. The skins/ directory in
+# custom skin at ~/.config/smew/skins/<name>.yaml. The skins/ directory in
 # the repo has copyable examples. Empty means the default theme.
 skin: ""

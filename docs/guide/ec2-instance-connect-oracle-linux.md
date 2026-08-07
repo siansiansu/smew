@@ -1,12 +1,12 @@
 # EC2 Instance Connect on Oracle Linux (for ephemeral SSH-over-SSM)
 
-`skua --ssh-config` defaults to **ephemeral** mode: each `ssh`/`scp` connection
+`smew --ssh-config` defaults to **ephemeral** mode: each `ssh`/`scp` connection
 pushes a 60-second temporary public key via **EC2 Instance Connect (EIC)** — no
 permanent `authorized_keys` entry. EIC is preinstalled on Amazon Linux / Ubuntu
 but **not on Oracle Linux** (RHEL family), so it must be baked into the golden
 image. This guide covers install + config + the common gotchas.
 
-> If you'd rather not run EIC, use `skua --ssh-config --ssh-static` instead
+> If you'd rather not run EIC, use `smew --ssh-config --ssh-static` instead
 > (your public key must already be in the host's `authorized_keys`). No EIC and
 > no `ec2-instance-connect:SendSSHPublicKey` IAM needed.
 
@@ -97,7 +97,7 @@ sudo ausearch -m avc -ts recent
 
 ## 5. End-to-end test
 
-From your laptop (with `skua --ssh-config >> ~/.ssh/config` already applied):
+From your laptop (with `smew --ssh-config >> ~/.ssh/config` already applied):
 
 ```sh
 ssh ec2-user@i-0abc...          # marketplace Oracle Linux default user is ec2-user

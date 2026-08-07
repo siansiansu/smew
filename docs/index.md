@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: skua
+  name: smew
   text: AWS SSM sessions, multiplexed.
   tagline: >-
     An interactive EC2/SSM inventory browser with iTerm2-like split panes and
@@ -10,14 +10,14 @@ hero:
     on AWS.
   image:
     src: /logo.svg
-    alt: skua
+    alt: smew
   actions:
     - theme: brand
       text: Get Started
       link: /guide/installation
     - theme: alt
       text: View on GitHub
-      link: https://github.com/siansiansu/skua
+      link: https://github.com/siansiansu/smew
 
 features:
   - icon: 🔭
@@ -47,19 +47,19 @@ features:
 ::: code-group
 
 ```sh [Homebrew]
-brew install siansiansu/tap/skua
+brew install siansiansu/tap/smew
 ```
 
 ```sh [Shell]
 curl --proto '=https' --tlsv1.2 -LsSf \
-  https://github.com/siansiansu/skua/releases/latest/download/skua-installer.sh | sh
+  https://github.com/siansiansu/smew/releases/latest/download/smew-installer.sh | sh
 ```
 
 ```sh [Cargo]
-cargo install skua
+cargo install smew
 ```
 
 :::
 
-Then run `skua` — it opens the AWS profile picker. See the
+Then run `smew` — it opens the AWS profile picker. See the
 [quick start](/guide/quick-start) for the two-minute tour.

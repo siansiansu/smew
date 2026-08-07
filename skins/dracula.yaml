@@ -1,6 +1,6 @@
-# Dracula skin for skua (https://draculatheme.com)
-# Copy to ~/.config/skua/skins/<name>.yaml and set `skin: <name>` in
-# ~/.config/skua/config.yaml. Any role may be omitted to keep the default.
+# Dracula skin for smew (https://draculatheme.com)
+# Copy to ~/.config/smew/skins/<name>.yaml and set `skin: <name>` in
+# ~/.config/smew/config.yaml. Any role may be omitted to keep the default.
 
 cyan: &cyan "#8be9fd"
 green: &green "#50fa7b"

@@ -1,4 +1,4 @@
-//! Loads skua settings from ~/.config/skua/config.yaml.
+//! Loads smew settings from ~/.config/smew/config.yaml.
 //!
 //! The file is optional — a missing file yields zero-value defaults. CLI flags
 //! take precedence over config values (resolved in main).
@@ -12,9 +12,10 @@ use serde::Deserialize;
 const DEFAULT_REFRESH: Duration = Duration::from_secs(30);
 
 /// Mirrors config.yaml. `refresh_interval` is a duration string such as
-/// "30s" or "2m"; empty / "0" disables auto-refresh.
+/// "30s" or "2m"; empty / "0" disables auto-refresh. Unknown keys are
+/// rejected so typos fail loudly instead of silently keeping the default.
 #[derive(Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub default_profile: String,
     pub default_region: String,
@@ -23,7 +24,7 @@ pub struct Config {
     /// "ctrl+b", "ctrl+a", "ctrl+ "). Default ctrl+b.
     pub session_leader: String,
     /// SSM Parameter Store name holding the latest published version, for the
-    /// update check. Default /skua/latest-version.
+    /// update check. Default /smew/latest-version.
     pub version_param: String,
     /// Turns the update check off entirely.
     pub disable_version_check: bool,
@@ -32,7 +33,7 @@ pub struct Config {
     /// (with mouse on, hold Shift while dragging instead).
     pub mouse: Option<bool>,
     /// Color theme: a built-in name (default, dracula, gruvbox-dark, nord)
-    /// or a file in ~/.config/skua/skins/<name>.yaml. Empty means default.
+    /// or a file in ~/.config/smew/skins/<name>.yaml. Empty means default.
     pub skin: String,
 }
 
@@ -43,7 +44,7 @@ impl Config {
             return "";
         }
         if self.version_param.is_empty() {
-            return "/skua/latest-version";
+            return "/smew/latest-version";
         }
         &self.version_param
     }
@@ -128,10 +129,10 @@ fn path() -> Option<PathBuf> {
     if let Ok(x) = std::env::var("XDG_CONFIG_HOME")
         && !x.is_empty()
     {
-        return Some(PathBuf::from(x).join("skua").join("config.yaml"));
+        return Some(PathBuf::from(x).join("smew").join("config.yaml"));
     }
     let home = dirs::home_dir()?;
-    Some(home.join(".config").join("skua").join("config.yaml"))
+    Some(home.join(".config").join("smew").join("config.yaml"))
 }
 
 /// Reads the config file. A missing file is not an error.
@@ -217,7 +218,7 @@ mod tests {
     fn version_param_logic() {
         assert_eq!(
             Config::default().version_param_name(),
-            "/skua/latest-version"
+            "/smew/latest-version"
         );
         assert_eq!(cfg("version_param: \"/x/y\"").version_param_name(), "/x/y");
         assert_eq!(cfg("disable_version_check: true").version_param_name(), "");
@@ -225,10 +226,21 @@ mod tests {
 
     #[test]
     fn parses_example_config() {
-        let c = cfg(
-            "default_profile: \"\"\ndefault_region: ap-northeast-1\nrefresh_interval: \"30s\"\nsession_leader: \"ctrl+b\"\nversion_param: \"/skua/latest-version\"\ndisable_version_check: false\n",
-        );
+        // The shipped example must always match the struct; with
+        // deny_unknown_fields this catches any drift between the two.
+        let c = cfg(include_str!("../config.example.yaml"));
         assert_eq!(c.default_region, "ap-northeast-1");
         assert_eq!(c.refresh_interval(), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn unknown_key_is_an_error() {
+        let err = serde_yaml_ng::from_str::<Config>("defaut_region: x")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("defaut_region"),
+            "error should name the key: {err}"
+        );
     }
 }

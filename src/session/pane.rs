@@ -232,7 +232,7 @@ struct Responder {
     params: Vec<u8>,
 }
 
-#[derive(Default, PartialEq)]
+#[derive(Default)]
 enum ResponderState {
     #[default]
     Idle,

@@ -6,3 +6,13 @@ references
 node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
+
+# Never commit local config or secrets (smew reads ~/.config/smew/config.yaml,
+# but a repo-local copy of config.example.yaml must not slip in).
+/config.yaml
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+*.log
