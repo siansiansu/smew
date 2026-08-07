@@ -480,11 +480,14 @@ async fn utilization_aws(
 }
 
 /// Developer-mode utilization: stable pseudo-values derived from the id so
-/// the columns show a spread (including over the color thresholds), with
-/// some hosts missing memory — like fleets without the CloudWatch agent.
+/// the columns show a spread (including over the color thresholds). Some
+/// hosts miss memory (no CloudWatch agent), and every 7th host has no
+/// datapoints at all (stopped, or metrics lag) — so both n/a paths render.
 fn mock_utilization(ids: &[String]) -> HashMap<String, Utilization> {
     ids.iter()
-        .map(|id| {
+        .enumerate()
+        .filter(|(i, _)| i % 7 != 3)
+        .map(|(_, id)| {
             let h: u32 = id.bytes().map(u32::from).sum();
             let mem = (!h.is_multiple_of(4)).then_some(f64::from(h * 13 % 100));
             (
@@ -498,19 +501,30 @@ fn mock_utilization(ids: &[String]) -> HashMap<String, Utilization> {
         .collect()
 }
 
-/// The developer-mode dataset: a spread of states, types, AZs, ages and SSM
-/// reachability so every list/detail/session code path has something to show.
+/// The SSM reachability variants a fleet exhibits.
+#[derive(Clone, Copy)]
+enum MockSsm {
+    /// Healthy, current agent.
+    On,
+    /// Reachable but running an ancient agent version.
+    Old,
+    /// Registered but unreachable right now.
+    Lost,
+    /// Registered but the agent went inactive.
+    Inactive,
+    /// No SSM record at all (stopped / never registered).
+    No,
+}
+
+/// The developer-mode dataset: a 30-host fleet spread over states, types,
+/// AZs, VPCs, ages, platforms and SSM reachability so every list / detail /
+/// session / filter / drill code path has something realistic to show.
 fn mock_instances() -> Vec<Instance> {
+    use MockSsm::*;
     let now = chrono::Utc::now();
-    let online = || {
-        Some(SsmStatus {
-            online: true,
-            agent_version: "3.3.987.0".to_string(),
-            ping_status: "Online".to_string(),
-        })
-    };
+
     /// The fields every mock host shares (identity, tags, network placement);
-    /// the per-host struct literals below override the rest.
+    /// the per-host tweaks below override the rest.
     fn base(name: &str, id: &str, az: &str, tag_pairs: &[(&str, &str)]) -> Instance {
         let mut tags: BTreeMap<String, String> = tag_pairs
             .iter()
@@ -539,109 +553,140 @@ fn mock_instances() -> Vec<Instance> {
         }
     }
 
-    vec![
-        Instance {
-            instance_type: "t3.small".to_string(),
-            private_ip: "10.0.1.11".to_string(),
-            launch_time: Some(now - chrono::Duration::days(30)),
-            ssm: online(),
-            ..base(
-                "web-01",
-                "i-0aaaaaaaaaaaaaa01",
-                "ap-northeast-1a",
-                &[("env", "dev"), ("role", "web")],
-            )
-        },
-        Instance {
-            instance_type: "t3.small".to_string(),
-            private_ip: "10.0.1.12".to_string(),
-            launch_time: Some(now - chrono::Duration::days(30)),
-            ssm: online(),
-            ..base(
-                "web-02",
-                "i-0aaaaaaaaaaaaaa02",
-                "ap-northeast-1c",
-                &[("env", "dev"), ("role", "web")],
-            )
-        },
-        Instance {
-            instance_type: "t3.medium".to_string(),
-            private_ip: "10.0.2.21".to_string(),
-            launch_time: Some(now - chrono::Duration::hours(5)),
-            ssm: online(),
-            ..base(
-                "api-01",
-                "i-0bbbbbbbbbbbbbb01",
-                "ap-northeast-1a",
-                &[("env", "dev"), ("role", "api")],
-            )
-        },
-        Instance {
-            instance_type: "t3.micro".to_string(),
-            private_ip: "10.0.3.5".to_string(),
-            launch_time: Some(now - chrono::Duration::days(90)),
-            ssm: online(),
-            ..base(
-                "db-bastion",
-                "i-0cccccccccccccc01",
-                "ap-northeast-1a",
-                &[("env", "dev"), ("role", "bastion")],
-            )
-        },
-        // SSM agent registered but unreachable → listed, not connectable.
-        Instance {
-            instance_type: "c6i.large".to_string(),
-            private_ip: "10.0.4.31".to_string(),
-            launch_time: Some(now - chrono::Duration::minutes(45)),
-            ssm: Some(SsmStatus {
-                online: false,
-                agent_version: "3.2.1550.0".to_string(),
-                ping_status: "ConnectionLost".to_string(),
-            }),
-            ..base(
-                "worker-01",
-                "i-0dddddddddddddd01",
-                "ap-northeast-1c",
-                &[("env", "dev"), ("role", "worker")],
-            )
-        },
-        // Stopped → no SSM record at all.
-        Instance {
-            state: "stopped".to_string(),
-            instance_type: "t4g.small".to_string(),
-            private_ip: "10.0.5.8".to_string(),
-            launch_time: Some(now - chrono::Duration::days(45)),
-            ssm: None,
-            ..base(
-                "cache-01",
-                "i-0eeeeeeeeeeeeee01",
-                "ap-northeast-1a",
-                &[("env", "dev"), ("role", "cache")],
-            )
-        },
+    let ssm = |s: MockSsm| match s {
+        On => Some(SsmStatus {
+            online: true,
+            agent_version: "3.3.987.0".to_string(),
+            ping_status: "Online".to_string(),
+        }),
+        Old => Some(SsmStatus {
+            online: true,
+            agent_version: "2.3.612.0".to_string(),
+            ping_status: "Online".to_string(),
+        }),
+        Lost => Some(SsmStatus {
+            online: false,
+            agent_version: "3.2.1550.0".to_string(),
+            ping_status: "ConnectionLost".to_string(),
+        }),
+        Inactive => Some(SsmStatus {
+            online: false,
+            agent_version: "3.1.1004.0".to_string(),
+            ping_status: "Inactive".to_string(),
+        }),
+        No => None,
+    };
+
+    const A: &str = "ap-northeast-1a";
+    const C: &str = "ap-northeast-1c";
+
+    // The fleet: (name, id, state, type, az, private-ip, age-hours, ssm, role).
+    // Name = "" exercises the id-as-display-name fallback; the very long and
+    // the CJK names exercise NAME-column flex, unicode width and h-scroll.
+    type Host = (
+        &'static str, // name
+        &'static str, // instance id
+        &'static str, // state
+        &'static str, // instance type
+        &'static str, // az
+        &'static str, // private ip
+        i64,          // age in hours
+        MockSsm,      // reachability
+        &'static str, // role tag
+    );
+    #[rustfmt::skip]
+    let fleet: [Host; 30] = [
+        ("web-01",        "i-0aaaaaaaaaaaaaa01", "running",       "t3.small",   A, "10.0.1.11",  720,   On,       "web"),
+        ("web-02",        "i-0aaaaaaaaaaaaaa02", "running",       "t3.small",   C, "10.0.1.12",  720,   On,       "web"),
+        ("web-03",        "i-0aaaaaaaaaaaaaa03", "running",       "t3.small",   A, "10.0.1.13",  240,   On,       "web"),
+        ("web-04",        "i-0aaaaaaaaaaaaaa04", "running",       "t3.medium",  C, "10.0.1.14",  48,    On,       "web"),
+        ("api-01",        "i-0bbbbbbbbbbbbbb01", "running",       "t3.medium",  A, "10.0.2.21",  5,     On,       "api"),
+        ("api-02",        "i-0bbbbbbbbbbbbbb02", "running",       "t3.medium",  C, "10.0.2.22",  96,    On,       "api"),
+        // Just launched: still pending, SSM hasn't registered yet.
+        ("api-03",        "i-0bbbbbbbbbbbbbb03", "pending",       "t3.medium",  A, "10.0.2.23",  0,     No,       "api"),
+        ("db-bastion",    "i-0cccccccccccccc01", "running",       "t3.micro",   A, "10.0.3.5",   2160,  On,       "bastion"),
+        ("db-primary",    "i-0dbdbdbdbdbdbdb01", "running",       "r6g.xlarge", A, "10.0.3.11",  1440,  On,       "db"),
+        ("db-replica-1",  "i-0dbdbdbdbdbdbdb02", "running",       "r6g.large",  C, "10.0.3.12",  1440,  On,       "db"),
+        ("db-replica-2",  "i-0dbdbdbdbdbdbdb03", "stopped",       "r6g.large",  A, "10.0.3.13",  1440,  No,       "db"),
+        // Registered but unreachable → listed, not connectable.
+        ("worker-01",     "i-0dddddddddddddd01", "running",       "c6i.large",  C, "10.0.4.31",  1,     Lost,     "worker"),
+        ("worker-02",     "i-0dddddddddddddd02", "running",       "c6i.large",  A, "10.0.4.32",  240,   On,       "worker"),
+        // Reachable but on an ancient agent version.
+        ("worker-03",     "i-0dddddddddddddd03", "running",       "c6i.large",  C, "10.0.4.33",  4300,  Old,      "worker"),
+        ("worker-04",     "i-0dddddddddddddd04", "stopping",      "c6i.large",  A, "10.0.4.34",  240,   Lost,     "worker"),
+        ("worker-05",     "i-0dddddddddddddd05", "stopped",       "c6i.xlarge", C, "10.0.4.35",  2000,  No,       "worker"),
+        ("cache-01",      "i-0eeeeeeeeeeeeee01", "stopped",       "t4g.small",  A, "10.0.5.8",   1080,  No,       "cache"),
+        ("kafka-01",      "i-0cafecafecafeca01", "running",       "m6i.large",  A, "10.0.7.11",  3600,  On,       "kafka"),
+        ("kafka-02",      "i-0cafecafecafeca02", "running",       "m6i.large",  C, "10.0.7.12",  3600,  On,       "kafka"),
+        ("ci-runner-01",  "i-0c1c1c1c1c1c1c101", "running",       "c6i.xlarge", A, "10.0.8.11",  120,   On,       "ci"),
+        ("ci-runner-02",  "i-0c1c1c1c1c1c1c102", "stopped",       "c6i.xlarge", C, "10.0.8.12",  120,   No,       "ci"),
+        ("monitoring-01", "i-0abadfeedbeef0001", "running",       "t3.large",   A, "10.0.8.21",  4800,  On,       "monitoring"),
+        ("gpu-train-01",  "i-0feedfacefeedfa01", "running",       "p3.2xlarge", A, "10.0.10.5",  72,    On,       "ml"),
+        // Ancient prod-legacy host: agent registered once, now inactive.
+        ("legacy-app-01", "i-0123456789abcde01", "running",       "t2.small",   A, "10.9.1.15",  19200, Inactive, "legacy"),
+        ("windows-01",    "i-0abcdefabcdefab01", "running",       "m5.large",   C, "10.0.6.14",  168,   On,       "win"),
+        ("windows-sql-01","i-0abcdefabcdefab02", "running",       "m5.xlarge",  A, "10.9.1.20",  2400,  On,       "win"),
+        ("migration-temp-遷移中", "i-0deadbeefdeadbe01", "terminated", "t3.large", C, "10.0.9.50", 240, No,       "temp"),
+        ("batch-spot-01", "i-0b00b00b00b00b001", "shutting-down", "c5.large",   A, "10.0.9.60",  6,     No,       "batch"),
+        ("analytics-pipeline-orchestrator-blue-deployment-canary",
+                          "i-0a11a11a11a11a101", "running",       "c5.large",   C, "10.0.11.7",  336,   On,       "analytics"),
         // No Name tag → the id doubles as the display name.
-        Instance {
-            instance_type: "t2.micro".to_string(),
-            private_ip: "10.0.9.99".to_string(),
-            launch_time: Some(now - chrono::Duration::days(400)),
-            ssm: online(),
-            ..base("", "i-0ffffffffffffff01", "ap-northeast-1a", &[])
-        },
-        Instance {
-            instance_type: "m5.large".to_string(),
-            platform: "Windows".to_string(),
-            private_ip: "10.0.6.14".to_string(),
-            public_ip: "203.0.113.20".to_string(),
-            launch_time: Some(now - chrono::Duration::days(7)),
-            ssm: online(),
-            ..base(
-                "windows-01",
-                "i-0abcdefabcdefab01",
-                "ap-northeast-1c",
-                &[("env", "dev"), ("role", "win")],
-            )
-        },
-    ]
+        ("",              "i-0ffffffffffffff01", "running",       "t2.micro",   A, "10.0.9.99",  9600,  On,       ""),
+    ];
+
+    fleet
+        .into_iter()
+        .map(|(name, id, state, itype, az, ip, age_h, reach, role)| {
+            let mut tags: Vec<(&str, &str)> = vec![("env", "dev")];
+            if !role.is_empty() {
+                tags.push(("role", role));
+            }
+            let mut inst = Instance {
+                state: state.to_string(),
+                instance_type: itype.to_string(),
+                private_ip: ip.to_string(),
+                launch_time: Some(now - chrono::Duration::hours(age_h)),
+                ssm: ssm(reach),
+                ..base(name, id, az, &tags)
+            };
+            // Per-host specials: platforms, public IPs, the prod-legacy VPC,
+            // and tier security groups (so the sg view drills somewhere).
+            match name {
+                "windows-01" | "windows-sql-01" => {
+                    inst.platform = "Windows".to_string();
+                }
+                "gpu-train-01" => {
+                    inst.public_ip = "203.0.113.55".to_string();
+                }
+                _ => {}
+            }
+            if name == "windows-01" {
+                inst.public_ip = "203.0.113.20".to_string();
+            }
+            if matches!(name, "legacy-app-01" | "windows-sql-01") {
+                inst.vpc_id = "vpc-0prd00000000prd0".to_string();
+                inst.subnet_id = "subnet-0prd0000000000a".to_string();
+                inst.security_groups = vec![SecurityGroupRef {
+                    id: "sg-0prd00000000prd0".to_string(),
+                    name: "prod-legacy-sg".to_string(),
+                }];
+                inst.tags.insert("env".to_string(), "prod".to_string());
+            }
+            if role == "web" {
+                inst.security_groups.push(SecurityGroupRef {
+                    id: "sg-0web00000000web0".to_string(),
+                    name: "web-sg".to_string(),
+                });
+            }
+            if role == "db" {
+                inst.security_groups.push(SecurityGroupRef {
+                    id: "sg-0db000000000db00".to_string(),
+                    name: "db-sg".to_string(),
+                });
+            }
+            inst
+        })
+        .collect()
 }
 
 impl From<&aws_sdk_ec2::types::Instance> for Instance {
@@ -723,7 +768,44 @@ mod tests {
         let res = rt.block_on(inv.list());
 
         assert!(res.warnings.is_empty());
-        assert!(res.instances.len() >= 6, "got {}", res.instances.len());
+        assert_eq!(res.instances.len(), 30, "the mock fleet is 30 hosts");
+        // the fleet must cover every lifecycle state the UI colors
+        for state in [
+            "running",
+            "stopped",
+            "pending",
+            "stopping",
+            "terminated",
+            "shutting-down",
+        ] {
+            assert!(
+                res.instances.iter().any(|i| i.state == state),
+                "no {state} host in the fleet"
+            );
+        }
+        // SSM variety: online, ConnectionLost, Inactive, and none at all
+        for ping in ["Online", "ConnectionLost", "Inactive"] {
+            assert!(
+                res.instances
+                    .iter()
+                    .any(|i| i.ssm.as_ref().is_some_and(|s| s.ping_status == ping)),
+                "no host with SSM ping {ping}"
+            );
+        }
+        assert!(res.instances.iter().any(|i| i.ssm.is_none()));
+        // platform / network variety
+        assert!(res.instances.iter().any(|i| i.platform == "Windows"));
+        assert!(
+            res.instances
+                .iter()
+                .any(|i| i.vpc_id == "vpc-0prd00000000prd0"),
+            "want hosts outside the default vpc"
+        );
+        assert!(res.instances.iter().any(|i| !i.public_ip.is_empty()));
+        assert!(
+            res.instances.iter().any(|i| i.security_groups.len() > 1),
+            "want a host with multiple SGs"
+        );
         let keys: Vec<_> = res
             .instances
             .iter()
@@ -747,8 +829,9 @@ mod tests {
             Ok(String::new())
         );
 
-        // Utilization: every mock host has CPU; at least one lacks memory so
-        // the n/a rendering path is exercised offline.
+        // Utilization: known hosts have CPU, at least one lacks memory (no
+        // CW agent), and some hosts have no datapoints at all — all three
+        // n/a rendering paths are exercised offline.
         let ids: Vec<String> = res
             .instances
             .iter()
@@ -756,7 +839,13 @@ mod tests {
             .collect();
         let (util, warns) = rt.block_on(inv.utilization(&ids));
         assert!(warns.is_empty());
-        assert_eq!(util.len(), ids.len());
+        assert!(
+            util.len() < ids.len(),
+            "some hosts must lack metrics entirely ({}/{})",
+            util.len(),
+            ids.len()
+        );
+        assert!(!util.is_empty());
         assert!(util.values().all(|u| u.cpu.is_some()));
         assert!(
             util.values().any(|u| u.mem.is_none()),
