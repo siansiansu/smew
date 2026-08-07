@@ -1,6 +1,7 @@
 //! The root model and the message loop: mode dispatch, async command
 //! spawns, and shared small helpers.
 
+mod forward;
 mod list;
 mod mouse;
 mod overlays;
@@ -57,7 +58,20 @@ pub enum Mode {
     Profiles,
     Help,
     Confirm,
+    Forward,
     Session,
+}
+
+/// The port-forward form state (Mode::Forward). Field order: remote host,
+/// remote port, local port.
+#[derive(Default)]
+pub(crate) struct ForwardForm {
+    pub(crate) target: Instance,
+    pub(crate) host: Input,
+    pub(crate) port: Input,
+    pub(crate) local: Input,
+    pub(crate) field: usize, // 0 host · 1 port · 2 local
+    pub(crate) error: String,
 }
 
 /// What the confirmation dialog is asking about.
@@ -159,6 +173,7 @@ pub struct Model {
     pub(crate) detail: Instance,
     pub(crate) confirm: Instance,
     pub(crate) confirm_action: ConfirmKind,
+    pub(crate) fwd: ForwardForm,
     pub(crate) refresh: Duration,
 
     // update check
@@ -239,6 +254,7 @@ impl Model {
             detail: Instance::default(),
             confirm: Instance::default(),
             confirm_action: ConfirmKind::Reboot,
+            fwd: ForwardForm::default(),
             refresh: opts.refresh,
             version_param: opts.version_param,
             latest_version: String::new(),
@@ -475,6 +491,10 @@ impl Model {
                 self.apply_filter();
                 self.table_to_top();
             }
+            Mode::Forward => {
+                self.forward_field_mut().insert_str(s);
+                self.fwd.error.clear();
+            }
             _ => {}
         }
     }
@@ -486,6 +506,7 @@ impl Model {
             Mode::Detail => self.update_detail(&s),
             Mode::Help => self.update_help(&s),
             Mode::Confirm => self.update_confirm(&s),
+            Mode::Forward => self.update_forward(k, &s),
             Mode::Session => self.update_session(k, &s),
             Mode::List => self.update_list(k, &s),
         }

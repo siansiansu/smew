@@ -74,6 +74,15 @@ impl Model {
                     self.mode = Mode::Profiles;
                 }
             }
+            "F" => {
+                if let Some(inst) = self.filtered.get(self.cursor).cloned() {
+                    if inst.is_connectable() {
+                        self.open_forward_form(inst);
+                    } else {
+                        self.status = format!("not connectable via SSM: {}", inst.name);
+                    }
+                }
+            }
             "enter" | "d" => {
                 if let Some(inst) = self.filtered.get(self.cursor).cloned() {
                     self.detail = inst;

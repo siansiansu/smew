@@ -86,6 +86,34 @@ impl Model {
         }
     }
 
+    /// Opens a port-forwarding pane running the given argv: appended to the
+    /// running session, or as a fresh single-pane session. Focuses it.
+    pub(crate) fn start_forward_pane(
+        &mut self,
+        title: &str,
+        argv: &[String],
+    ) -> Result<(), String> {
+        let rows = self.initial_pane_rows();
+        let p =
+            Pane::start(title, argv, 20, rows, self.pane_notifier()).map_err(|e| e.to_string())?;
+        if self.panes.is_empty() {
+            // fresh session: reset multiplexer state like start_session does
+            self.broadcast_group.clear();
+            self.zoomed = false;
+            self.scrolling = false;
+            self.scroll_offset = 0;
+            self.focus_nav = false;
+            self.leader_pending = false;
+            self.adding_pane = false;
+        }
+        self.panes.push(p);
+        self.focus = self.panes.len() - 1;
+        self.mode = Mode::Session;
+        self.status.clear();
+        self.relayout_session();
+        Ok(())
+    }
+
     pub(crate) fn close_session(&mut self) {
         for p in &self.panes {
             p.close();

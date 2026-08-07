@@ -31,6 +31,7 @@ and configured leader key.
 | `Space` | mark / unmark host for multi-open |
 | `s` | connect (marked hosts as split panes, else the selected one) |
 | `R` | reboot selected host (running only, confirmation required) |
+| `F` | port forward: local port → the instance, or a remote host (e.g. RDS) via it |
 | `c` | switch AWS profile |
 | `r` / `Ctrl+r` | refresh inventory now |
 | `?` | toggle help |

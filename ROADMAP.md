@@ -52,7 +52,7 @@ colors, and the config selects one by name.
   themes, styling the embedded terminal (vt100 content keeps whatever the
   remote shell outputs).
 
-## 4. Port forwarding sessions
+## 4. Port forwarding sessions ✅ (2026-08 — `F` in the list)
 
 Start SSM port-forwarding sessions from the TUI, running inside the existing
 pane infrastructure:

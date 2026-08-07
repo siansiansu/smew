@@ -382,6 +382,11 @@ impl Model {
             "R",
             "reboot selected host (running only, confirmation required)",
         );
+        r(
+            &mut lines,
+            "F",
+            "port forward: local port → instance (or a remote host via it)",
+        );
         r(&mut lines, "c", "switch AWS profile");
         r(&mut lines, "r / ctrl+r", "refresh inventory now");
         r(&mut lines, "?", "toggle this help");
@@ -504,6 +509,101 @@ pub(super) fn draw_confirm(m: &Model, f: &mut Frame) {
     f.render_widget(Paragraph::new(body).block(block), area);
 }
 
+// ---- port-forward form ----
+
+/// The port-forward form, centered over the list (drawn by the caller).
+/// Three fields; the focused one shows a cursor.
+pub(super) fn draw_forward(m: &Model, f: &mut Frame) {
+    let th = theme::current();
+    let fwd = &m.fwd;
+
+    let field = |label: &str,
+                 input: &crate::tui::input::Input,
+                 focused: bool,
+                 note: &str|
+     -> Line<'static> {
+        let mut spans = vec![
+            Span::styled(
+                format!("{} ", if focused { "▶" } else { " " }),
+                Style::new().fg(th.pink),
+            ),
+            Span::styled(format!("{label:<12}"), Style::new().fg(th.gray)),
+        ];
+        if focused {
+            let (before, cur, after) = input.render_parts();
+            spans.push(Span::raw(before.to_string()));
+            spans.push(Span::styled(
+                cur,
+                Style::new().add_modifier(Modifier::REVERSED),
+            ));
+            spans.push(Span::raw(after.to_string()));
+        } else if input.value().is_empty() {
+            spans.push(Span::styled(note.to_string(), Style::new().dim()));
+            return Line::from(spans);
+        } else {
+            spans.push(Span::raw(input.value().to_string()));
+        }
+        if !note.is_empty() {
+            spans.push(Span::styled(format!("   {note}"), Style::new().dim()));
+        }
+        Line::from(spans)
+    };
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            format!(
+                "Port forward — {} ({})",
+                fwd.target.name, fwd.target.instance_id
+            ),
+            Style::new().add_modifier(Modifier::BOLD),
+        )),
+        Line::raw(""),
+        field(
+            "Remote host",
+            &fwd.host,
+            fwd.field == 0,
+            "empty = the instance itself",
+        ),
+        field("Remote port", &fwd.port, fwd.field == 1, "e.g. 5432"),
+        field(
+            "Local port",
+            &fwd.local,
+            fwd.field == 2,
+            "empty = same as remote",
+        ),
+        Line::raw(""),
+    ];
+    if fwd.error.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "[enter] start    [tab/↑↓] field    [esc] cancel",
+            Style::new().dim(),
+        )));
+    } else {
+        lines.push(Line::from(Span::styled(
+            format!("⚠ {}", fwd.error),
+            Style::new().fg(th.red),
+        )));
+    }
+
+    let inner_w = lines.iter().map(Line::width).max().unwrap_or(0).max(52);
+    let w = (inner_w + 8).min(f.area().width as usize) as u16; // padding 3+3, borders 2
+    let h = (lines.len() + 4).min(f.area().height.saturating_sub(1) as usize) as u16;
+    let block = Block::new()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(th.cyan))
+        .padding(Padding::new(3, 3, 1, 1));
+    let fa = f.area();
+    let area = Rect::new(
+        fa.x + fa.width.saturating_sub(w) / 2,
+        fa.y + fa.height.saturating_sub(h) / 2,
+        w,
+        h,
+    );
+    f.render_widget(Clear, area);
+    f.render_widget(Paragraph::new(lines).block(block), area);
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_util::{listed_model, render};
@@ -578,6 +678,26 @@ mod tests {
             "dialog not vertically centered: row {row}\n{s}"
         );
         assert!(s.contains("SSM instances"), "underlying list missing:\n{s}");
+    }
+
+    #[test]
+    fn renders_forward_form() {
+        let mut m = listed_model();
+        let inst = m.all[0].clone();
+        m.open_forward_form(inst);
+        let s = render(&m, 100, 30);
+        assert!(
+            s.contains("Port forward — web-prod-01 (i-0aaa1111)"),
+            "title missing:\n{s}"
+        );
+        assert!(s.contains("▶ Remote host"), "focused field missing:\n{s}");
+        assert!(s.contains("Remote port"), "field missing:\n{s}");
+        assert!(s.contains("[enter] start"), "hints missing:\n{s}");
+
+        // an error replaces the hint line
+        m.fwd.error = "remote port: required, 1–65535".to_string();
+        let s = render(&m, 100, 30);
+        assert!(s.contains("⚠ remote port"), "error missing:\n{s}");
     }
 
     #[test]

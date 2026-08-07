@@ -29,6 +29,10 @@ pub(crate) fn draw(m: &Model, f: &mut Frame) {
             }
             overlays::draw_confirm(m, f);
         }
+        Mode::Forward => {
+            list::draw_list(m, f);
+            overlays::draw_forward(m, f);
+        }
         Mode::Detail => overlays::draw_detail(m, f),
         Mode::List => list::draw_list(m, f),
     }

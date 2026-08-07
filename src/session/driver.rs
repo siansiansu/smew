@@ -51,6 +51,52 @@ impl PluginDriver {
         args
     }
 
+    /// Builds the argv for an SSM port-forwarding session. With a remote
+    /// host it forwards through the instance to that host
+    /// (AWS-StartPortForwardingSessionToRemoteHost); otherwise to a port on
+    /// the instance itself (AWS-StartPortForwardingSession). The parameters
+    /// are a single JSON argv element — no shell is involved — but the
+    /// caller must validate `remote_host` (the form restricts its charset).
+    pub fn port_forward_command(
+        &self,
+        target: &str,
+        local_port: u16,
+        remote_host: &str,
+        remote_port: u16,
+    ) -> Vec<String> {
+        let (doc, params) = if remote_host.is_empty() {
+            (
+                "AWS-StartPortForwardingSession",
+                format!(r#"{{"portNumber":["{remote_port}"],"localPortNumber":["{local_port}"]}}"#),
+            )
+        } else {
+            (
+                "AWS-StartPortForwardingSessionToRemoteHost",
+                format!(
+                    r#"{{"host":["{remote_host}"],"portNumber":["{remote_port}"],"localPortNumber":["{local_port}"]}}"#
+                ),
+            )
+        };
+        let mut args: Vec<String> = [
+            "aws",
+            "ssm",
+            "start-session",
+            "--target",
+            target,
+            "--document-name",
+            doc,
+            "--parameters",
+            &params,
+        ]
+        .map(String::from)
+        .into();
+        for (flag, value) in self.flag_pairs() {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+        args
+    }
+
     fn aws_flags(&self) -> String {
         let mut s = String::new();
         for (flag, value) in self.flag_pairs() {
@@ -134,6 +180,45 @@ mod tests {
         assert_eq!(
             d.shell_command("i-1"),
             vec!["aws", "ssm", "start-session", "--target", "i-1"]
+        );
+    }
+
+    #[test]
+    fn port_forward_command_args() {
+        let d = PluginDriver::new("prod", "ap-northeast-1");
+        assert_eq!(
+            d.port_forward_command("i-0abc", 15432, "db.internal", 5432),
+            vec![
+                "aws",
+                "ssm",
+                "start-session",
+                "--target",
+                "i-0abc",
+                "--document-name",
+                "AWS-StartPortForwardingSessionToRemoteHost",
+                "--parameters",
+                r#"{"host":["db.internal"],"portNumber":["5432"],"localPortNumber":["15432"]}"#,
+                "--region",
+                "ap-northeast-1",
+                "--profile",
+                "prod"
+            ]
+        );
+        // No remote host → forward to the instance itself.
+        let d = PluginDriver::new("", "");
+        assert_eq!(
+            d.port_forward_command("i-1", 8080, "", 80),
+            vec![
+                "aws",
+                "ssm",
+                "start-session",
+                "--target",
+                "i-1",
+                "--document-name",
+                "AWS-StartPortForwardingSession",
+                "--parameters",
+                r#"{"portNumber":["80"],"localPortNumber":["8080"]}"#,
+            ]
         );
     }
 

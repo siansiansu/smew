@@ -31,6 +31,7 @@ impl Model {
             Mode::Help => self.mouse_overlay(me, self.help_lines().len()),
             Mode::Profiles => self.mouse_profiles(me),
             Mode::Confirm => {} // keyboard-only: y / n
+            Mode::Forward => {} // keyboard-only form
         }
     }
 
