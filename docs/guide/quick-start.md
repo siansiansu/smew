@@ -9,24 +9,48 @@ smew --dry-run --profile prod               # print inventory as a table, no TUI
 smew --dev                                  # developer mode: no AWS needed
 ```
 
-With no flags, smew lists the profiles from `~/.aws/config` — pick one and it
-loads the region's EC2 inventory with live SSM reachability (🟢 reachable /
-🔴 not).
+With no flags, smew lists the profiles from `~/.aws/config` — the picker
+filters fzf-style as you type. Pick one and it loads the region's EC2
+inventory: the SSM column reads `Connected` for hosts reachable right now,
+and the top panel shows who you are (account id + role/user from STS)
+alongside the region and instance counts.
 
-`--dev` runs the whole TUI against a built-in mock inventory: no credentials,
-no network. "Sessions" open your local shell in the panes, so filtering,
-multi-pane broadcast, port-forward forms and every keybinding can be tried
-(or demoed) offline. Combine with `--dry-run` to print the mock table.
+`--dev` runs the whole TUI against a built-in 30-host mock fleet (every
+lifecycle state, lost/ancient SSM agents, a second VPC, orphaned volumes,
+idle EIPs…): no credentials, no network. "Sessions" open your local shell
+in the panes, so filtering, resource views, multi-pane broadcast,
+port-forward forms and every keybinding can be tried (or demoed) offline.
+Combine with `--dry-run` to print the mock table.
 
 ## Browse the inventory
 
 - `↑/↓` or `j/k` move; `gg`/`G` jump to top/bottom; `10gg` jumps to row 10
-- `/` (or `f`) filters by name / id / ip / type / az / vpc / tag; prefix a
-  term with `!` to exclude; `Enter` nests another filter level inside the
-  current results, `Esc` pops it
+- `/` (or `f`) filters by name / id / ip / type / az / vpc / sg / tag;
+  space-separated terms are AND-ed, prefix a term with `!` to exclude;
+  `Enter` applies the query and closes the input, `Esc` clears it
 - `N` / `S` / `T` / `A` / `P` sort by name / state / type / age / ip
+  (`C` / `M` sort by CPU / memory when the
+  [`metrics`](/guide/configuration) columns are on)
 - `Enter` or `d` opens the detail view; `c` switches AWS profile; `r`
   refreshes now
+
+## Switch views with `:` (command mode)
+
+Press `:` for a k9s-style command prompt with inline completion (`Tab`
+accepts, `↑` recalls the last command):
+
+- `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip` `:ami` switch the
+  table to EBS volumes, snapshots, security groups, VPCs, subnets, network
+  interfaces, Elastic IPs or AMIs — the usual AWS aliases work too
+  (`:ebs`, `:sub`, `:images`, …); `:ec2` returns to instances
+- in these views the same navigation and `/` filter apply; `d` opens a
+  key/value detail; things that cost money for nothing — unattached
+  volumes, idle EIPs, orphaned ENIs — and subnets close to IP exhaustion
+  are highlighted
+- `Enter` on a **vpc / subnet / sg** row drills down: the instances view
+  opens pre-filtered to that resource; `Esc` goes back to where you were
+- `:profile <name>` (fuzzy-matched) or `:ctx` switches AWS account;
+  `:help` and `:q` do what they say
 
 ## Connect
 

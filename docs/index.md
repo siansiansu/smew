@@ -23,8 +23,21 @@ features:
   - icon: 🔭
     title: Inventory browser
     details: >-
-      EC2 detail + SSM reachability at a glance, with sorting, nested and
-      reverse filtering, and vim-style jumps.
+      A k9s-style framed table: EC2 detail, live SSM reachability, opt-in
+      %CPU/%MEM, caller identity in the header, reverse filtering and
+      vim-style jumps.
+  - icon: ⌨️
+    title: Command mode
+    details: >-
+      A k9s-style `:` prompt with inline completion — :vol :sg :vpc :eni
+      switch resource views; :ctx / :profile switch AWS accounts with fuzzy
+      matching.
+  - icon: 🧭
+    title: Resource views
+    details: >-
+      Volumes, snapshots, security groups, VPCs, subnets, ENIs, EIPs and
+      AMIs in the same table. Enter drills from a vpc/subnet/sg into its
+      instances; orphaned and near-exhausted resources light up.
   - icon: 🪟
     title: Multi-pane sessions
     details: >-

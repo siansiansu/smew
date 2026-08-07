@@ -15,14 +15,30 @@ and configured leader key.
 | `Ctrl+d` / `Ctrl+u` | half page down / up |
 | `Home` / `End` | jump to top / bottom |
 
+## Commands (`:`)
+
+| Key | Action |
+| --- | --- |
+| `:` | open the command prompt (k9s-style, inline completion) |
+| `Tab` | accept the suggestion; `↑` recalls the last command / cycles |
+| `:ec2` `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip` `:ami` | switch resource view (AWS aliases work: `ebs`, `sub`, `images`, …) |
+| `:profile [name]` / `:ctx` | switch AWS profile — fuzzy-matched with a name, the picker without |
+| `:help` / `:q` | help / quit |
+| `Esc` | close the prompt, nothing happens |
+
+In a resource view: `Enter` on a vpc / subnet / sg drills into its
+instances (`Esc` there goes back, cursor restored); `Enter` elsewhere and
+`d` everywhere open a key/value detail; `Esc` returns to `:ec2`.
+
 ## Filter & sort
 
 | Key | Action |
 | --- | --- |
-| `/` or `f` | filter: name / id / ip / type / az / vpc / tag (`!` excludes) |
-| `Enter` | add a nested filter level (narrows within results) |
-| `Esc` | pop the last filter level |
+| `/` or `f` | filter: name / id / ip / type / az / vpc / sg / tag (`!` excludes, terms AND) |
+| `Enter` | apply the query and close the input |
+| `Esc` | clear the filter |
 | `N` / `S` / `T` / `A` / `P` | sort by name / state / type / age / ip (again to reverse) |
+| `C` / `M` | sort by CPU / memory (with [`metrics`](/guide/configuration) on) |
 
 ## Actions
 
@@ -34,9 +50,16 @@ and configured leader key.
 | `R` | reboot selected host (running only, confirmation required) |
 | `F` | [port forward](/guide/quick-start#port-forward): local port → the instance, or a remote host (e.g. RDS) via it |
 | `c` | switch AWS profile |
-| `r` / `Ctrl+r` | refresh inventory now |
+| `r` / `Ctrl+r` | refresh the active view now |
 | `?` | toggle help |
 | `q` / `Ctrl+c` | quit |
+
+## Profile picker
+
+Typing filters immediately, fzf-style — no `/` needed. Fuzzy subsequence
+matching (`cldprd` finds `Cloud.prod`), matched characters highlighted.
+`↑↓` / `Ctrl+p` / `Ctrl+n` move, `Enter` selects, `Esc` clears the query
+then cancels, `Ctrl+c` quits.
 
 ## Session (leader prefix, default `Ctrl+b`)
 
@@ -71,5 +94,5 @@ lists these commands whenever the leader is pending.
 On by default (config `mouse: false` disables):
 
 - wheel scrolls the list, detail/help overlays, and a pane's scrollback
-- click selects a row / focuses a pane; double-click connects (🟢 only)
+- click selects a row / focuses a pane; double-click connects (`Connected` hosts only)
 - terminal-native text selection needs `Shift+drag` while mouse capture is on

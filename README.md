@@ -19,13 +19,21 @@ No server, no inbound port 22 — access control and audit stay on AWS.
 
 ## Features
 
-- **Inventory browser** — EC2 detail + SSM reachability, sorting, filtering,
-  vim-style navigation
+- **Inventory browser** — a k9s-style framed table: EC2 detail, live SSM
+  reachability, opt-in %CPU/%MEM, caller identity in the header, sorting,
+  filtering, vim-style navigation
+- **Resource views** — `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip`
+  `:ami` switch the table to the rest of the EC2 family; `Enter` on a
+  vpc / subnet / sg drills into its instances; orphaned volumes, idle EIPs
+  and subnets near IP exhaustion light up
+- **Command mode** — a k9s-style `:` prompt with inline completion; switch
+  AWS profiles with `:ctx` / `:profile <name>` (fuzzy) or the fzf-style
+  picker
 - **Multi-pane sessions** — mark hosts, open split panes of live SSM shells;
   broadcast input, layouts, zoom, scrollback
 - **Port forwarding** — SSM port-forwarding sessions from the same list
 - **SSH-over-SSM** — ssh / scp / rsync / VS Code Remote with no open port 22
-- AWS profile picker, skins, mouse support, `--dry-run`, `--dev` mode
+- Skins, mouse support, `--dry-run`, `--dev` mode
 
 ## Installation
 
