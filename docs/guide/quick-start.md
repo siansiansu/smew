@@ -32,8 +32,10 @@ Combine with `--dry-run` to print the mock table.
 - `N` / `S` / `T` / `A` / `P` sort by name / state / type / age / ip
   (`C` / `M` sort by CPU / memory when the
   [`metrics`](/guide/configuration) columns are on)
-- `Enter` or `d` opens the detail view; `c` switches AWS profile; `r`
-  refreshes now
+- `Enter` or `d` opens the describe dashboard; `c` switches AWS profile;
+  `r` refreshes now
+- `Esc` / `q` go back (close the filter, pop a drill-down, leave a view);
+  quitting is `:q` or `Ctrl+c`
 
 ## Switch views with `:` (command mode)
 

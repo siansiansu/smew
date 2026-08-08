@@ -63,8 +63,8 @@ impl Model {
         }
 
         match s {
-            "q" | "ctrl+c" => self.quit = true,
-            "?" => {
+            "ctrl+c" => self.quit = true,
+            "?" | "ctrl+a" => {
                 self.overlay_scroll = 0;
                 self.mode = Mode::Help;
             }
@@ -141,8 +141,10 @@ impl Model {
                 self.ensure_cursor_visible(); // the prompt box takes 3 rows
             }
             ":" => self.open_command(),
-            "esc" => {
-                // after a drill-down, esc walks back to the originating view
+            // esc and q both mean "back" (quit is :q or ctrl+c); at the top
+            // level q says how to quit instead of doing it by surprise.
+            "esc" | "q" => {
+                // after a drill-down, walk back to the originating view
                 if let Some((kind, cursor)) = self.drill_from.take() {
                     self.drill_back(kind, cursor);
                     return;
@@ -158,6 +160,10 @@ impl Model {
                     self.adding_pane = false;
                     self.mode = Mode::Session;
                     self.status.clear();
+                    return;
+                }
+                if s == "q" {
+                    self.status = "nothing to go back to — quit with :q or ctrl+c".to_string();
                 }
             }
             "r" | "ctrl+r" => {

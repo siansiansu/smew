@@ -67,8 +67,9 @@ Storage / Tags) so most records fit one screen; `Esc` returns to `:ec2`.
 | `F` | [port forward](/guide/quick-start#port-forward): local port → the instance, or a remote host (e.g. RDS) via it |
 | `c` | switch AWS profile |
 | `r` / `Ctrl+r` | refresh the active view now |
-| `?` | toggle help |
-| `q` / `Ctrl+c` | quit |
+| `?` / `Ctrl+a` | help — every view and key |
+| `Esc` / `q` | back: close the prompt or filter, pop a drill-down, leave a view |
+| `:q` / `Ctrl+c` | quit |
 
 ## Profile picker
 

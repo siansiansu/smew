@@ -12,8 +12,8 @@ impl Model {
     /// update_list before it branches here.
     pub(super) fn update_resource_list(&mut self, s: &str) {
         match s {
-            "q" | "ctrl+c" => self.quit = true,
-            "?" => {
+            "ctrl+c" => self.quit = true,
+            "?" | "ctrl+a" => {
                 self.overlay_scroll = 0;
                 self.mode = Mode::Help;
             }
@@ -52,13 +52,14 @@ impl Model {
                 self.ensure_cursor_visible(); // the prompt box takes 3 rows
             }
             ":" => self.open_command(),
-            "esc" => {
+            // esc and q both mean "back" (quit is :q or ctrl+c)
+            "esc" | "q" => {
                 if !self.filter.value().is_empty() {
                     self.filter.clear();
                     self.apply_filter();
                     self.table_to_top();
                 } else {
-                    // nothing to clear: esc returns home (the ec2 view)
+                    // nothing to clear: back home (the ec2 view)
                     self.switch_view(ResourceKind::Instances);
                 }
             }
@@ -217,6 +218,19 @@ mod tests {
         let mut m = resource_model(ResourceKind::Eips);
         key(&mut m, "esc");
         assert_eq!(m.view, ResourceKind::Instances);
+    }
+
+    #[test]
+    fn q_means_back_not_quit() {
+        // in a resource view, q goes back to ec2 (same as esc)
+        let mut m = resource_model(ResourceKind::Volumes);
+        key(&mut m, "q");
+        assert_eq!(m.view, ResourceKind::Instances);
+        assert!(!m.should_quit());
+        // at the top level q only says how to quit
+        key(&mut m, "q");
+        assert!(!m.should_quit());
+        assert!(m.status.contains(":q"), "status: {}", m.status);
     }
 
     #[test]

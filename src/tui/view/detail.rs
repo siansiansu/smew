@@ -355,9 +355,9 @@ pub(super) fn draw_detail_page(m: &Model, f: &mut Frame) {
     }
 
     let hint = if m.view == crate::resources::ResourceKind::Instances {
-        "s connect · ↑/↓ scroll · esc/d back · q quit"
+        "s connect · ↑/↓ scroll · esc/q back · :q quit"
     } else {
-        "↑/↓ scroll · esc/d back · q quit"
+        "↑/↓ scroll · esc/q back · :q quit"
     };
     draw_crumbs(
         m,
@@ -407,7 +407,7 @@ pub(super) fn draw_help_page(m: &Model, f: &mut Frame) {
         m,
         f,
         "<help>".to_string(),
-        "esc / ? back · ↑/↓ scroll · q quit",
+        "esc/q back · ↑/↓ scroll · ctrl+c quit",
         (m.overlay_scroll, inner.height as usize, total),
     );
 }

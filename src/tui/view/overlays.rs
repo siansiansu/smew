@@ -214,8 +214,13 @@ impl Model {
         );
         r(&mut lines, "c", "switch AWS profile");
         r(&mut lines, "r / ctrl+r", "refresh inventory now");
-        r(&mut lines, "?", "toggle this help");
-        r(&mut lines, "q / ctrl+c", "quit");
+        r(&mut lines, "? / ctrl+a", "this help (all views and keys)");
+        r(
+            &mut lines,
+            "esc / q",
+            "back: close prompt/filter, pop a drill, leave a view",
+        );
+        r(&mut lines, ":q / ctrl+c", "quit");
 
         sec(
             &mut lines,

@@ -143,22 +143,22 @@ const RES_MENU: [(&str, &str); 10] = [
     ("d", "details"),
     ("c", "profile"),
     ("r", "refresh"),
-    ("esc", "back to ec2"),
+    ("esc / q", "back to ec2"),
     ("?", "help"),
-    ("q", "quit"),
+    (":q", "quit"),
 ];
 
 /// The describe page's menu (instances also get `s`, harmless elsewhere).
 const DETAIL_MENU: [(&str, &str); 5] = [
     ("↑↓", "scroll"),
     ("s", "connect"),
-    ("esc / d", "back"),
+    ("esc / q", "back"),
     ("?", "help"),
-    ("q", "quit"),
+    (":q", "quit"),
 ];
 
 /// The help page's menu.
-const HELP_MENU: [(&str, &str); 3] = [("↑↓", "scroll"), ("esc / ?", "back"), ("q", "quit")];
+const HELP_MENU: [(&str, &str); 3] = [("↑↓", "scroll"), ("esc / q", "back"), ("ctrl+c", "quit")];
 
 pub(super) fn draw_list(m: &Model, f: &mut Frame) {
     let area = f.area();

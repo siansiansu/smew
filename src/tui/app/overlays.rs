@@ -102,8 +102,8 @@ impl Model {
     pub(super) fn update_detail(&mut self, s: &str) {
         let is_instance = self.view == crate::resources::ResourceKind::Instances;
         match s {
-            "q" | "ctrl+c" => self.quit = true,
-            "esc" | "d" | "enter" => self.mode = Mode::List,
+            "ctrl+c" => self.quit = true,
+            "esc" | "q" | "d" | "enter" => self.mode = Mode::List,
             "s" if is_instance => {
                 let t = vec![self.detail.clone()];
                 self.start_session(t);
@@ -114,8 +114,8 @@ impl Model {
 
     pub(super) fn update_help(&mut self, s: &str) {
         match s {
-            "q" | "ctrl+c" => self.quit = true,
-            "esc" | "?" => {
+            "ctrl+c" => self.quit = true,
+            "esc" | "q" | "?" | "enter" => {
                 // Return to the session when panes are still open — returning
                 // to the list would strand any live session (help is
                 // reachable via leader-?).
@@ -195,6 +195,22 @@ mod tests {
         assert_eq!(m.overlay_scroll, max);
         m.update_detail("g");
         assert_eq!(m.overlay_scroll, 0);
+    }
+
+    #[test]
+    fn detail_and_help_q_and_enter_go_back() {
+        let mut m = test_model();
+        m.mode = crate::tui::Mode::Detail;
+        m.update_detail("q");
+        assert_eq!(m.mode, crate::tui::Mode::List);
+        assert!(!m.should_quit());
+        m.mode = crate::tui::Mode::Help;
+        m.update_help("enter");
+        assert_eq!(m.mode, crate::tui::Mode::List);
+        m.mode = crate::tui::Mode::Help;
+        m.update_help("q");
+        assert_eq!(m.mode, crate::tui::Mode::List);
+        assert!(!m.should_quit());
     }
 
     #[test]
