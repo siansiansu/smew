@@ -60,9 +60,14 @@ accepts, `↑` recalls the last command):
 
 ## Connect
 
-- `s` on a host opens an SSM shell.
-- `Space` marks multiple hosts, then `s` opens them **as split panes** in one
-  session — a terminal multiplexer over SSM.
+- `s` on a host opens an SSM shell — no open ports, works for any
+  `Connected` host.
+- `i` logs in over plain SSH instead: smew pushes a 60-second key via EC2
+  Instance Connect, then runs `ssh <user>@<ip>` (public IP preferred). For
+  hosts whose port 22 you can reach — no SSM agent required. The login
+  user comes from `ssh_user` in the config (default `ec2-user`).
+- `Space` marks multiple hosts, then `s` (or `i`) opens them **as split
+  panes** in one session — a terminal multiplexer over SSM.
 
 ## Port forward
 

@@ -40,6 +40,9 @@ pub struct Config {
     /// Color theme: a built-in name (default, dracula, gruvbox-dark, nord)
     /// or a file in ~/.config/smew/skins/<name>.yaml. Empty means default.
     pub skin: String,
+    /// Login user for the SSH connect action (`i`) and the EC2 Instance
+    /// Connect key push. Default ec2-user.
+    pub ssh_user: String,
     /// Shows %CPU/%MEM columns fed from CloudWatch (GetMetricStatistics /
     /// ListMetrics — free-tier-eligible APIs, polled every 5 minutes).
     /// Default false: the columns are hidden and smew never calls
@@ -62,6 +65,15 @@ impl Config {
     /// Whether mouse support is enabled (default true).
     pub fn mouse_enabled(&self) -> bool {
         self.mouse.unwrap_or(true)
+    }
+
+    /// The SSH login user, defaulting to "ec2-user".
+    pub fn ssh_user(&self) -> &str {
+        if self.ssh_user.is_empty() {
+            "ec2-user"
+        } else {
+            &self.ssh_user
+        }
     }
 
     /// The configured session leader key, defaulting to "ctrl+b".
@@ -227,6 +239,12 @@ mod tests {
         assert!(Config::default().mouse_enabled());
         assert!(cfg("mouse: true").mouse_enabled());
         assert!(!cfg("mouse: false").mouse_enabled());
+    }
+
+    #[test]
+    fn ssh_user_default() {
+        assert_eq!(Config::default().ssh_user(), "ec2-user");
+        assert_eq!(cfg("ssh_user: \"ubuntu\"").ssh_user(), "ubuntu");
     }
 
     #[test]

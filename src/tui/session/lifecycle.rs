@@ -9,7 +9,7 @@ use crate::session::Pane;
 use crate::tui::{ConfirmKind, Mode, Model};
 
 impl Model {
-    /// Starts `aws ssm start-session` for the instance on a fresh PTY pane.
+    /// Starts an SSM shell for the instance on a fresh PTY pane.
     /// Reports a failure via the status bar and returns None.
     fn spawn_pane(&mut self, inst: &Instance, cols: u16, rows: u16) -> Option<Arc<Pane>> {
         let drv = self.driver.clone()?;
@@ -28,17 +28,57 @@ impl Model {
         self.height.saturating_sub(4).max(1)
     }
 
-    /// Opens the given instances as tiled panes and enters the session view.
-    /// Each pane runs `aws ssm start-session` on its own PTY.
+    /// Opens the given instances as tiled SSM-shell panes and enters the
+    /// session view.
     pub(crate) fn start_session(&mut self, targets: Vec<Instance>) {
         if targets.is_empty() {
             self.status = "nothing connectable selected".to_string();
             return;
         }
-        if self.driver.is_none() {
+        let Some(drv) = self.driver.clone() else {
+            return;
+        };
+        let specs: Vec<(String, Vec<String>)> = targets
+            .iter()
+            .map(|inst| (inst.name.clone(), drv.shell_command(&inst.instance_id)))
+            .collect();
+        self.open_panes(specs);
+    }
+
+    /// Opens the given instances as SSH login panes: `smew eic-ssh` pushes a
+    /// 60-second EC2 Instance Connect key, then runs `ssh user@ip` over the
+    /// network (public IP preferred). SSM plays no part — the host's port 22
+    /// must be reachable from here.
+    pub(crate) fn start_ssh_session(&mut self, targets: Vec<Instance>) {
+        if targets.is_empty() {
+            self.status = "no host with an IP selected".to_string();
             return;
         }
-        let cols = ((self.width as usize / targets.len())
+        let Some(drv) = self.driver.clone() else {
+            return;
+        };
+        let mut specs = Vec::new();
+        for inst in &targets {
+            let ip = if inst.public_ip.is_empty() {
+                &inst.private_ip
+            } else {
+                &inst.public_ip
+            };
+            match drv.ssh_shell_command(&inst.instance_id, ip, &self.ssh_user, &self.ssh_key) {
+                Ok(argv) => specs.push((format!("{} (ssh)", inst.name), argv)),
+                Err(e) => {
+                    self.status = format!("ssh {}: {e}", inst.name);
+                    return;
+                }
+            }
+        }
+        self.open_panes(specs);
+    }
+
+    /// Replaces the current session (if any) with panes running the given
+    /// (title, argv) specs and enters the session view.
+    fn open_panes(&mut self, specs: Vec<(String, Vec<String>)>) {
+        let cols = ((self.width as usize / specs.len().max(1))
             .saturating_sub(2)
             .max(1)) as u16;
         let rows = self.initial_pane_rows();
@@ -47,9 +87,10 @@ impl Model {
             p.close();
         }
         self.broadcast_group.clear();
-        for inst in &targets {
-            if let Some(p) = self.spawn_pane(inst, cols, rows) {
-                self.panes.push(p);
+        for (title, argv) in &specs {
+            match Pane::start(title, argv, cols, rows, self.pane_notifier()) {
+                Ok(p) => self.panes.push(p),
+                Err(e) => self.status = format!("failed to start {title}: {e}"),
             }
         }
         if self.panes.is_empty() {

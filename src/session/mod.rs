@@ -10,6 +10,6 @@ mod driver;
 mod pane;
 pub mod ssm;
 
-pub use driver::{PluginDriver, SshOptions};
+pub use driver::{PluginDriver, SshOptions, default_pub_key};
 
 pub(crate) use pane::{Notifier, Pane};

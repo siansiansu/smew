@@ -34,6 +34,24 @@ fn smew_exe() -> String {
         .unwrap_or_else(|| "smew".to_string())
 }
 
+/// Picks the first existing ~/.ssh/id_*.pub, else `id_ed25519.pub` — the
+/// public key the EC2 Instance Connect flows push by default.
+pub fn default_pub_key() -> String {
+    let Some(home) = dirs::home_dir() else {
+        return "~/.ssh/id_ed25519.pub".to_string();
+    };
+    for f in ["id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub"] {
+        let p = home.join(".ssh").join(f);
+        if p.exists() {
+            return p.to_string_lossy().into_owned();
+        }
+    }
+    home.join(".ssh")
+        .join("id_ed25519.pub")
+        .to_string_lossy()
+        .into_owned()
+}
+
 /// Configures SSH-over-SSM config generation.
 #[derive(Debug, Clone)]
 pub struct SshOptions {
@@ -110,6 +128,54 @@ impl PluginDriver {
                     .flat_map(|(flag, value)| [flag.to_string(), value.to_string()]),
             )
             .collect()
+    }
+
+    /// Builds the argv for an SSH login pane via EC2 Instance Connect:
+    /// `smew eic-ssh` pushes a 60-second public key through the SDK, then
+    /// execs `ssh <user>@<ip>` over the network (not through SSM) — the
+    /// host's port 22 must be reachable from here. An empty public key
+    /// skips the push (the key is already in authorized_keys).
+    /// In developer mode it runs a local shell after a banner.
+    pub fn ssh_shell_command(
+        &self,
+        target: &str,
+        ip: &str,
+        user: &str,
+        public_key: &str,
+    ) -> Result<Vec<String>, String> {
+        check_charset("ssh user", user, "._-")?;
+        check_charset("host ip", ip, "._-:")?;
+        if self.dev {
+            return Ok(vec![
+                "sh".to_string(),
+                "-c".to_string(),
+                "echo \"[smew dev] ssh $0 — local shell, not an SSH session\"; exec \"${SHELL:-/bin/sh}\"".to_string(),
+                format!("{user}@{ip}"),
+            ]);
+        }
+        let mut argv: Vec<String> = [
+            smew_exe().as_str(),
+            "eic-ssh",
+            "--target",
+            target,
+            "--ip",
+            ip,
+            "--user",
+            user,
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        if !public_key.is_empty() {
+            check_charset("ssh public key path", public_key, SHELL_SAFE_EXTRA)?;
+            argv.push("--public-key".to_string());
+            argv.push(public_key.to_string());
+        }
+        argv.extend(
+            self.flag_pairs()
+                .flat_map(|(flag, value)| [flag.to_string(), value.to_string()]),
+        );
+        Ok(argv)
     }
 
     /// Builds the argv for an SSM port-forwarding session. With a remote
@@ -252,6 +318,51 @@ mod tests {
             &d.shell_command("i-1")[1..],
             ["ssm-session", "--target", "i-1"]
         );
+    }
+
+    #[test]
+    fn ssh_shell_command_args() {
+        let d = PluginDriver::new("prod", "ap-northeast-1");
+        let argv = d
+            .ssh_shell_command(
+                "i-0abc",
+                "10.0.1.5",
+                "ec2-user",
+                "/home/u/.ssh/id_ed25519.pub",
+            )
+            .unwrap();
+        assert_eq!(
+            &argv[1..],
+            [
+                "eic-ssh",
+                "--target",
+                "i-0abc",
+                "--ip",
+                "10.0.1.5",
+                "--user",
+                "ec2-user",
+                "--public-key",
+                "/home/u/.ssh/id_ed25519.pub",
+                "--region",
+                "ap-northeast-1",
+                "--profile",
+                "prod"
+            ]
+        );
+        // an empty key skips the push flag (key already in authorized_keys)
+        let argv = d
+            .ssh_shell_command("i-0abc", "10.0.1.5", "ubuntu", "")
+            .unwrap();
+        assert!(!argv.contains(&"--public-key".to_string()));
+        // dev mode runs a local shell with a banner, no runner involved
+        let sh = PluginDriver::dev()
+            .ssh_shell_command("i-1", "1.2.3.4", "u", "")
+            .unwrap();
+        assert_eq!(&sh[..2], ["sh", "-c"]);
+        assert_eq!(sh[3], "u@1.2.3.4");
+        // hostile values are rejected before any argv is built
+        assert!(d.ssh_shell_command("i-1", "1.2.3.4", "u$(x)", "").is_err());
+        assert!(d.ssh_shell_command("i-1", "1.2.3.4;x", "u", "").is_err());
     }
 
     #[test]

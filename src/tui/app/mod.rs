@@ -184,6 +184,10 @@ pub struct Options {
     /// Enables the %CPU/%MEM columns (CloudWatch polling). Off = no
     /// CloudWatch calls at all and the columns are hidden.
     pub metrics: bool,
+    /// Login user for the SSH connect action (config ssh_user).
+    pub ssh_user: String,
+    /// Public key pushed via EC2 Instance Connect for SSH connects.
+    pub ssh_key: String,
     pub rt: tokio::runtime::Handle,
 }
 
@@ -267,6 +271,8 @@ pub struct Model {
     pub(crate) pane_dirty: Arc<AtomicBool>,
     pub(crate) leader: String,
     pub(crate) leader_pending: bool,
+    pub(crate) ssh_user: String,
+    pub(crate) ssh_key: String,
     pub(crate) focus_nav: bool,
     pub(crate) adding_pane: bool,
     pub(crate) zoomed: bool,
@@ -358,6 +364,8 @@ impl Model {
             pane_dirty: Arc::new(AtomicBool::new(false)),
             leader,
             leader_pending: false,
+            ssh_user: opts.ssh_user,
+            ssh_key: opts.ssh_key,
             focus_nav: false,
             adding_pane: false,
             zoomed: false,
@@ -791,6 +799,8 @@ pub(crate) fn test_model() -> Model {
             version_param: String::new(),
             mouse: true,
             metrics: true, // view tests exercise the %CPU/%MEM columns
+            ssh_user: "ec2-user".to_string(),
+            ssh_key: String::new(),
             rt: rt.handle().clone(),
         },
         tx,

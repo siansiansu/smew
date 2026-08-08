@@ -133,25 +133,10 @@ pub async fn exec_ssh_proxy(
         Ok(c) => c,
         Err(e) => return e,
     };
-    if let Some(path) = public_key {
-        let key = match std::fs::read_to_string(path) {
-            Ok(k) => k,
-            Err(e) => return format!("cannot read public key {path}: {e}"),
-        };
-        let eic = aws_sdk_ec2instanceconnect::Client::new(&cfg);
-        if let Err(e) = eic
-            .send_ssh_public_key()
-            .instance_id(target)
-            .instance_os_user(user)
-            .ssh_public_key(key.trim())
-            .send()
-            .await
-        {
-            return format!(
-                "ec2-instance-connect:SendSSHPublicKey failed: {}",
-                aws_sdk_ssm::error::DisplayErrorContext(&e)
-            );
-        }
+    if let Some(path) = public_key
+        && let Some(err) = push_eic_key(&cfg, target, user, path).await
+    {
+        return err;
     }
     start_and_exec(
         &cfg,
@@ -161,6 +146,74 @@ pub async fn exec_ssh_proxy(
         &[("portNumber".to_string(), port.to_string())],
     )
     .await
+}
+
+/// Pushes a 60-second public key via EC2 Instance Connect. Returns the
+/// error message on failure, None on success.
+async fn push_eic_key(
+    cfg: &SdkConfig,
+    target: &str,
+    user: &str,
+    public_key_path: &str,
+) -> Option<String> {
+    let key = match std::fs::read_to_string(public_key_path) {
+        Ok(k) => k,
+        Err(e) => return Some(format!("cannot read public key {public_key_path}: {e}")),
+    };
+    let eic = aws_sdk_ec2instanceconnect::Client::new(cfg);
+    eic.send_ssh_public_key()
+        .instance_id(target)
+        .instance_os_user(user)
+        .ssh_public_key(key.trim())
+        .send()
+        .await
+        .err()
+        .map(|e| {
+            format!(
+                "ec2-instance-connect:SendSSHPublicKey failed: {}",
+                aws_sdk_ssm::error::DisplayErrorContext(&e)
+            )
+        })
+}
+
+/// The `smew eic-ssh` runner: pushes an ephemeral key via EC2 Instance
+/// Connect, then execs `ssh <user>@<ip>` — a network SSH login, not an SSM
+/// channel (the host's port 22 must be reachable). An empty public key
+/// skips the push.
+pub async fn exec_eic_ssh(
+    profile: &str,
+    region: &str,
+    target: &str,
+    ip: &str,
+    user: &str,
+    public_key: Option<&str>,
+) -> String {
+    if let Some(path) = public_key {
+        let cfg = match aws::load(profile, region).await {
+            Ok(c) => c,
+            Err(e) => return e,
+        };
+        if let Some(err) = push_eic_key(&cfg, target, user, path).await {
+            return err;
+        }
+    }
+    let mut cmd = std::process::Command::new("ssh");
+    cmd.arg("-o")
+        .arg("StrictHostKeyChecking=accept-new")
+        .arg(format!("{user}@{ip}"));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = cmd.exec();
+        format!("failed to run ssh: {err}")
+    }
+    #[cfg(not(unix))]
+    {
+        match cmd.status() {
+            Ok(st) => std::process::exit(st.code().unwrap_or(1)),
+            Err(e) => format!("failed to run ssh: {e}"),
+        }
+    }
 }
 
 /// Replaces this process with the plugin (unix); returns the error message

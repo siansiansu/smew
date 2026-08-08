@@ -195,7 +195,12 @@ impl Model {
         r(
             &mut lines,
             "s",
-            "connect (marked hosts as split panes, else the selected one)",
+            "connect over SSM (marked hosts as split panes, else the selected one)",
+        );
+        r(
+            &mut lines,
+            "i",
+            "SSH login via EC2 Instance Connect (pushes a 60s key, then ssh user@ip)",
         );
         r(
             &mut lines,

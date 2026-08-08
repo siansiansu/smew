@@ -111,6 +111,10 @@ impl Model {
                     self.start_session(targets);
                 }
             }
+            "i" => {
+                let targets = self.selected_ssh_targets();
+                self.start_ssh_session(targets);
+            }
             "space" => {
                 if let Some(inst) = self.filtered.get(self.cursor)
                     && inst.is_connectable()
@@ -360,6 +364,25 @@ impl Model {
 
     /// The instances to open: all marked (if any), else the instance under
     /// the cursor. Non-connectable instances are dropped.
+    /// SSH connect targets: needs an IP, not SSM reachability.
+    fn selected_ssh_targets(&self) -> Vec<Instance> {
+        let has_ip = |i: &Instance| !i.public_ip.is_empty() || !i.private_ip.is_empty();
+        if !self.marked.is_empty() {
+            return self
+                .all
+                .iter()
+                .filter(|inst| self.marked.contains(&inst.instance_id) && has_ip(inst))
+                .cloned()
+                .collect();
+        }
+        self.filtered
+            .get(self.cursor)
+            .filter(|inst| has_ip(inst))
+            .cloned()
+            .map(|i| vec![i])
+            .unwrap_or_default()
+    }
+
     fn selected_targets(&self) -> Vec<Instance> {
         if !self.marked.is_empty() {
             return self

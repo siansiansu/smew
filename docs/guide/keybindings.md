@@ -61,7 +61,8 @@ Storage / Tags) so most records fit one screen; `Esc` returns to `:ec2`.
 | --- | --- |
 | `Enter` / `d` | detail view of the selected host |
 | `Space` | mark / unmark host for multi-open |
-| `s` | connect (marked hosts as split panes, else the selected one) |
+| `s` | connect over SSM (marked hosts as split panes, else the selected one) |
+| `i` | SSH login via EC2 Instance Connect: 60s key push, then `ssh user@ip` |
 | `R` | reboot selected host (running only, confirmation required) |
 | `F` | [port forward](/guide/quick-start#port-forward): local port → the instance, or a remote host (e.g. RDS) via it |
 | `c` | switch AWS profile |

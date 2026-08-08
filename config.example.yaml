@@ -38,6 +38,11 @@ disable_version_check: false
 # the repo has copyable examples. Empty means the default theme.
 skin: ""
 
+# Login user for the SSH connect action (`i` in the instance list) and the
+# EC2 Instance Connect key push. Default "ec2-user"; ubuntu images want
+# "ubuntu".
+ssh_user: "ec2-user"
+
 # %CPU / %MEM columns fed from CloudWatch, refreshed every 5 minutes.
 # Uses only free-tier-eligible APIs (GetMetricStatistics + ListMetrics,
 # within the always-free 1M requests/month). Memory needs the CloudWatch

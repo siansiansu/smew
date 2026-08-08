@@ -64,6 +64,26 @@ enum Cmd {
         #[arg(long, default_value = "")]
         region: String,
     },
+    /// EC2 Instance Connect login: push an ephemeral key, then exec
+    /// `ssh <user>@<ip>` over the network (internal)
+    #[command(hide = true, name = "eic-ssh")]
+    EicSsh {
+        /// Instance id (for the key push)
+        #[arg(long)]
+        target: String,
+        /// The address ssh connects to
+        #[arg(long)]
+        ip: String,
+        #[arg(long, default_value = "ec2-user")]
+        user: String,
+        /// Public key to push via EC2 Instance Connect; omit to skip the push
+        #[arg(long)]
+        public_key: Option<String>,
+        #[arg(long, default_value = "")]
+        profile: String,
+        #[arg(long, default_value = "")]
+        region: String,
+    },
     /// ssh ProxyCommand: optional EC2 Instance Connect key push, then the
     /// SSH-over-SSM stream on stdio (internal)
     #[command(hide = true, name = "ssh-proxy")]
@@ -108,6 +128,24 @@ async fn run_internal(cmd: Cmd) -> String {
                 }
             }
             ssm::exec_session(&profile, &region, &target, doc.as_deref(), &kv).await
+        }
+        Cmd::EicSsh {
+            target,
+            ip,
+            user,
+            public_key,
+            profile,
+            region,
+        } => {
+            ssm::exec_eic_ssh(
+                &profile,
+                &region,
+                &target,
+                &ip,
+                &user,
+                public_key.as_deref(),
+            )
+            .await
         }
         Cmd::SshProxy {
             target,
@@ -236,6 +274,8 @@ fn main() {
         mouse: cfg.mouse_enabled(),
         // Dev mode always shows the metrics columns — the mock data is free.
         metrics: cfg.metrics || cli.dev,
+        ssh_user: cfg.ssh_user().to_string(),
+        ssh_key: smew::session::default_pub_key(),
         rt: rt.handle().clone(),
     };
     if let Err(e) = tui::run(opts) {
@@ -256,7 +296,7 @@ async fn print_ssh_config(profile: &str, region: &str, ephemeral: bool, pub_key:
     }
     let mut pub_key = pub_key.unwrap_or_default();
     if ephemeral && pub_key.is_empty() {
-        pub_key = default_pub_key();
+        pub_key = smew::session::default_pub_key();
     }
     let drv = PluginDriver::new(profile, &region);
     let opt = SshOptions {
@@ -301,23 +341,6 @@ async fn print_ssh_config(profile: &str, region: &str, ephemeral: bool, pub_key:
             std::process::exit(1);
         }
     }
-}
-
-/// Picks the first existing ~/.ssh/id_*.pub, else `id_ed25519.pub`.
-fn default_pub_key() -> String {
-    let Some(home) = dirs::home_dir() else {
-        return "~/.ssh/id_ed25519.pub".to_string();
-    };
-    for f in ["id_ed25519.pub", "id_rsa.pub", "id_ecdsa.pub"] {
-        let p = home.join(".ssh").join(f);
-        if p.exists() {
-            return p.to_string_lossy().into_owned();
-        }
-    }
-    home.join(".ssh")
-        .join("id_ed25519.pub")
-        .to_string_lossy()
-        .into_owned()
 }
 
 /// Prints caller identity and the full enriched inventory as an aligned table

@@ -34,6 +34,11 @@ disable_version_check: false
 # custom skin at ~/.config/smew/skins/<name>.yaml.
 skin: ""
 
+# Login user for the SSH connect action (`i` in the instance list) and the
+# EC2 Instance Connect key push. Default "ec2-user"; ubuntu images want
+# "ubuntu".
+ssh_user: "ec2-user"
+
 # %CPU / %MEM columns fed from CloudWatch, refreshed every 5 minutes.
 # Only free-tier-eligible APIs (GetMetricStatistics + ListMetrics). Memory
 # needs the CloudWatch agent on the hosts ("n/a" without it). Default

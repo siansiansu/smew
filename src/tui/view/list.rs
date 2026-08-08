@@ -124,14 +124,14 @@ const LIST_MENU: [(&str, &str); 12] = [
     (":", "command"),
     ("/", "filter"),
     ("space", "mark"),
-    ("s", "connect"),
+    ("s", "connect (SSM)"),
+    ("i", "ssh login"),
     ("enter", "details"),
     ("F", "port-forward"),
     ("c", "profile"),
     ("R", "reboot"),
     ("r", "refresh"),
     ("?", "help"),
-    ("q", "quit"),
 ];
 
 /// The reduced menu of the non-instance resource views.
