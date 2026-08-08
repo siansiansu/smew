@@ -10,6 +10,7 @@
 
 mod ec2;
 mod mock;
+mod services;
 
 pub(crate) use mock::mock;
 
@@ -31,11 +32,22 @@ pub enum ResourceKind {
     Enis,
     Eips,
     Amis,
+    S3,
+    Lambda,
+    Asg,
+    Rds,
+    Dynamo,
+    Elb,
+    Sqs,
+    Sns,
+    Ecs,
+    Eks,
+    Cfn,
 }
 
 /// All non-instance kinds (registry order = suggestion order, grouped by
 /// category).
-pub const KINDS: [ResourceKind; 8] = [
+pub const KINDS: [ResourceKind; 19] = [
     ResourceKind::Volumes,
     ResourceKind::Snapshots,
     ResourceKind::SecurityGroups,
@@ -44,6 +56,17 @@ pub const KINDS: [ResourceKind; 8] = [
     ResourceKind::Enis,
     ResourceKind::Eips,
     ResourceKind::Amis,
+    ResourceKind::S3,
+    ResourceKind::Lambda,
+    ResourceKind::Asg,
+    ResourceKind::Rds,
+    ResourceKind::Dynamo,
+    ResourceKind::Elb,
+    ResourceKind::Sqs,
+    ResourceKind::Sns,
+    ResourceKind::Ecs,
+    ResourceKind::Eks,
+    ResourceKind::Cfn,
 ];
 
 impl ResourceKind {
@@ -59,6 +82,17 @@ impl ResourceKind {
             ResourceKind::Enis => "eni",
             ResourceKind::Eips => "eip",
             ResourceKind::Amis => "ami",
+            ResourceKind::S3 => "s3",
+            ResourceKind::Lambda => "lambda",
+            ResourceKind::Asg => "asg",
+            ResourceKind::Rds => "rds",
+            ResourceKind::Dynamo => "ddb",
+            ResourceKind::Elb => "elb",
+            ResourceKind::Sqs => "sqs",
+            ResourceKind::Sns => "sns",
+            ResourceKind::Ecs => "ecs",
+            ResourceKind::Eks => "eks",
+            ResourceKind::Cfn => "cfn",
         }
     }
 
@@ -66,13 +100,21 @@ impl ResourceKind {
     /// help page and the command suggestions).
     pub fn category(self) -> &'static str {
         match self {
-            ResourceKind::Instances | ResourceKind::Amis => "Compute",
-            ResourceKind::Volumes | ResourceKind::Snapshots => "Storage",
+            ResourceKind::Instances
+            | ResourceKind::Amis
+            | ResourceKind::Lambda
+            | ResourceKind::Asg => "Compute",
+            ResourceKind::Volumes | ResourceKind::Snapshots | ResourceKind::S3 => "Storage",
+            ResourceKind::Rds | ResourceKind::Dynamo => "Database",
             ResourceKind::SecurityGroups => "Security, Identity & Compliance",
             ResourceKind::Vpcs
             | ResourceKind::Subnets
             | ResourceKind::Enis
-            | ResourceKind::Eips => "Networking & Content Delivery",
+            | ResourceKind::Eips
+            | ResourceKind::Elb => "Networking & Content Delivery",
+            ResourceKind::Sqs | ResourceKind::Sns => "Application Integration",
+            ResourceKind::Ecs | ResourceKind::Eks => "Containers",
+            ResourceKind::Cfn => "Management & Governance",
         }
     }
 
@@ -88,6 +130,17 @@ impl ResourceKind {
             ResourceKind::Enis => &["eni", "networkinterfaces"],
             ResourceKind::Eips => &["eip", "addresses"],
             ResourceKind::Amis => &["ami", "images"],
+            ResourceKind::S3 => &["s3", "buckets"],
+            ResourceKind::Lambda => &["lambda", "fn", "functions"],
+            ResourceKind::Asg => &["asg", "autoscaling"],
+            ResourceKind::Rds => &["rds", "db"],
+            ResourceKind::Dynamo => &["ddb", "dynamodb", "tables"],
+            ResourceKind::Elb => &["elb", "lb", "alb", "loadbalancers"],
+            ResourceKind::Sqs => &["sqs", "queues"],
+            ResourceKind::Sns => &["sns", "topics"],
+            ResourceKind::Ecs => &["ecs"],
+            ResourceKind::Eks => &["eks"],
+            ResourceKind::Cfn => &["cfn", "stacks", "cloudformation"],
         }
     }
 
@@ -161,6 +214,26 @@ impl ResourceKind {
             ResourceKind::Amis => &[
                 "NAME", "AMI-ID", "STATE", "ARCH", "PLATFORM", "PUBLIC", "AGE",
             ],
+            ResourceKind::S3 => &["NAME", "REGION", "AGE"],
+            ResourceKind::Lambda => &["NAME", "RUNTIME", "MEMORY", "TIMEOUT", "SIZE", "MODIFIED"],
+            ResourceKind::Asg => &["NAME", "DESIRED", "MIN", "MAX", "INSTANCES", "AZS", "AGE"],
+            ResourceKind::Rds => &[
+                "NAME", "ENGINE", "VERSION", "CLASS", "STATUS", "STORAGE", "MULTI-AZ", "AGE",
+            ],
+            ResourceKind::Dynamo => &["NAME", "STATUS", "ITEMS", "SIZE", "BILLING", "AGE"],
+            ResourceKind::Elb => &["NAME", "TYPE", "SCHEME", "STATE", "VPC-ID", "AZS", "AGE"],
+            ResourceKind::Sqs => &["NAME", "MESSAGES", "IN-FLIGHT", "AGE"],
+            ResourceKind::Sns => &["NAME", "SUBS", "ARN"],
+            ResourceKind::Ecs => &[
+                "NAME",
+                "STATUS",
+                "SERVICES",
+                "RUNNING",
+                "PENDING",
+                "INSTANCES",
+            ],
+            ResourceKind::Eks => &["NAME", "STATUS", "VERSION", "PLATFORM", "AGE"],
+            ResourceKind::Cfn => &["NAME", "STATUS", "AGE", "UPDATED"],
         }
     }
 
@@ -238,11 +311,31 @@ pub(crate) fn sec(title: &str, rows: Vec<(&str, String)>) -> DetailSection {
     )
 }
 
+/// Compact human bytes (the console style: 12 KB / 4.2 MB / 1.1 GB).
+pub(crate) fn fmt_bytes(b: i64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut v = b as f64;
+    let mut u = 0;
+    while v >= 1024.0 && u < UNITS.len() - 1 {
+        v /= 1024.0;
+        u += 1;
+    }
+    if u == 0 {
+        format!("{b} B")
+    } else if v >= 10.0 {
+        format!("{v:.0} {}", UNITS[u])
+    } else {
+        format!("{v:.1} {}", UNITS[u])
+    }
+}
+
 /// Fetches one resource kind from AWS. Failures come back as Warnings with
-/// however many rows were listed before the error (usually none).
+/// however many rows were listed before the error (usually none). The EC2
+/// family reuses the long-lived client; the other services build theirs from
+/// the SdkConfig per call (construction is cheap, the config is shared).
 pub(crate) async fn list_aws(
     ec2: &aws_sdk_ec2::Client,
-    _cfg: &aws_config::SdkConfig,
+    cfg: &aws_config::SdkConfig,
     kind: ResourceKind,
 ) -> ResourceList {
     let mut res = ResourceList {
@@ -259,6 +352,17 @@ pub(crate) async fn list_aws(
         ResourceKind::Enis => ec2::enis(ec2, &mut res).await,
         ResourceKind::Eips => ec2::eips(ec2, &mut res).await,
         ResourceKind::Amis => ec2::amis(ec2, &mut res).await,
+        ResourceKind::S3 => services::buckets(cfg, &mut res).await,
+        ResourceKind::Lambda => services::functions(cfg, &mut res).await,
+        ResourceKind::Asg => services::asgs(cfg, &mut res).await,
+        ResourceKind::Rds => services::rds_instances(cfg, &mut res).await,
+        ResourceKind::Dynamo => services::dynamo_tables(cfg, &mut res).await,
+        ResourceKind::Elb => services::load_balancers(cfg, &mut res).await,
+        ResourceKind::Sqs => services::queues(cfg, &mut res).await,
+        ResourceKind::Sns => services::topics(cfg, &mut res).await,
+        ResourceKind::Ecs => services::ecs_clusters(cfg, &mut res).await,
+        ResourceKind::Eks => services::eks_clusters(cfg, &mut res).await,
+        ResourceKind::Cfn => services::stacks(cfg, &mut res).await,
     }
     res.rows
         .sort_by(|a, b| (a.cells.first(), &a.id).cmp(&(b.cells.first(), &b.id)));

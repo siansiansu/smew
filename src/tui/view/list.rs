@@ -205,7 +205,7 @@ fn draw_prompt(m: &Model, f: &mut Frame, area: Rect) {
             Style::new().add_modifier(Modifier::REVERSED),
         ));
         let hint = if m.commanding {
-            "command (tab completes · ↑ recalls): ec2 vol snap sg vpc subnet eni eip ami · profile [name] · help · quit"
+            "command (tab completes · ↑ recalls): ec2 vol sg vpc s3 lambda rds ddb sqs ecs … (? lists all) · profile [name] · help · quit"
         } else {
             "filter (substring · space = AND · ! = exclude): name / id / ip / type / az / vpc / tag"
         };

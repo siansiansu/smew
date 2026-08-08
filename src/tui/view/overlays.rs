@@ -367,8 +367,8 @@ impl Model {
         );
         r(
             &mut lines,
-            ":ec2 :vol :snap :sg …",
-            "switch resource view: vol snap sg vpc subnet eni eip ami (aws aliases work: ebs, sub, …)",
+            ":<view>",
+            "switch resource view — every view below (aws aliases work: ebs, fn, lb, sub, …)",
         );
         r(
             &mut lines,
@@ -381,6 +381,34 @@ impl Model {
             "switch AWS profile (fuzzy; bare = open the picker)",
         );
         r(&mut lines, ":help / :q", "this help / quit");
+
+        sec(&mut lines, "Resource views — by AWS category");
+        {
+            use crate::resources::{KINDS, ResourceKind};
+            // group the registry by category, registry order preserved
+            let mut cats: Vec<(&str, Vec<&str>)> = Vec::new();
+            for k in std::iter::once(ResourceKind::Instances).chain(KINDS) {
+                let c = k.category();
+                match cats.iter_mut().find(|(cc, _)| *cc == c) {
+                    Some((_, v)) => v.push(k.title()),
+                    None => cats.push((c, vec![k.title()])),
+                }
+            }
+            let key_w = cats
+                .iter()
+                .map(|(c, _)| c.chars().count())
+                .max()
+                .unwrap_or(0);
+            for (c, kinds) in cats {
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {c:<key_w$} "), Style::new().fg(th.gray)),
+                    Span::styled(
+                        format!(":{}", kinds.join("  :")),
+                        Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+            }
+        }
 
         sec(&mut lines, "Filter & sort");
         r(
@@ -655,9 +683,15 @@ mod tests {
         );
 
         m.mode = Mode::Help;
-        let s = render(&m, 100, 45);
+        let s = render(&m, 100, 60);
         assert!(s.contains("— keys"), "help title missing:\n{s}");
         assert!(s.contains("^b h / l"), "leader rows missing:\n{s}");
+        // resource views are grouped by AWS official category
+        assert!(
+            s.contains("Application Integration"),
+            "categories missing:\n{s}"
+        );
+        assert!(s.contains(":lambda"), "new views missing:\n{s}");
 
         m.mode = Mode::Confirm;
         m.confirm_action = ConfirmKind::Reboot;
@@ -689,7 +723,7 @@ mod tests {
             "scrolled-off section shown:\n{s}"
         );
         assert!(
-            s.contains("▍ Filter & sort"),
+            s.contains("▍ Resource views"),
             "section header missing:\n{s}"
         );
     }

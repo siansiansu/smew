@@ -115,6 +115,95 @@ pub(crate) fn mock(kind: ResourceKind) -> Vec<ResourceRow> {
             row("ami-0gold5", &["golden-2023-public", "ami-0gold5", "available", "x86_64", "Linux/UNIX", "yes", "500d"]),
             crit(row("ami-0fail6", &["failed-bake",   "ami-0fail6", "failed",    "x86_64", "Linux/UNIX", "-",   "1d"]), 2),
         ],
+        // S3: NAME REGION AGE — a terraform-state and a cross-region ML bucket
+        ResourceKind::S3 => vec![
+            row("dev-app-assets",       &["dev-app-assets",       "ap-northeast-1", "400d"]),
+            row("dev-alb-access-logs",  &["dev-alb-access-logs",  "ap-northeast-1", "300d"]),
+            row("dev-backups",          &["dev-backups",          "ap-northeast-1", "700d"]),
+            row("dev-data-lake-raw",    &["dev-data-lake-raw",    "ap-northeast-1", "200d"]),
+            row("ml-training-data",     &["ml-training-data",     "us-east-1",      "90d"]),
+            row("terraform-state-123456789012", &["terraform-state-123456789012", "ap-northeast-1", "900d"]),
+        ],
+        // Lambda: NAME RUNTIME MEMORY TIMEOUT SIZE MODIFIED — dev-cleanup-fn
+        // matches the eni-0lam9 Lambda ENI; a deprecated runtime warns
+        ResourceKind::Lambda => vec![
+            row("dev-cleanup-fn",   &["dev-cleanup-fn",   "python3.12", "256",  "60s",  "2.1 MB", "3d"]),
+            row("img-resize",       &["img-resize",       "nodejs20.x", "512",  "30s",  "12 MB",  "30d"]),
+            row("slack-alerts",     &["slack-alerts",     "python3.12", "128",  "10s",  "340 B",  "90d"]),
+            row("nightly-report",   &["nightly-report",   "python3.11", "1024", "300s", "8.4 MB", "12h"]),
+            warn(row("legacy-thumbnailer", &["legacy-thumbnailer", "python3.8", "128", "15s", "5.0 MB", "800d"]), 1),
+            row("stream-consumer",  &["stream-consumer",  "java21",     "2048", "900s", "48 MB",  "5d"]),
+        ],
+        // ASG: NAME DESIRED MIN MAX INSTANCES AZS AGE — worker-asg runs
+        // under its desired capacity (the warn path)
+        ResourceKind::Asg => vec![
+            row("web-asg",        &["web-asg",        "4", "2", "8",  "4", "2", "300d"]),
+            row("api-asg",        &["api-asg",        "2", "2", "6",  "2", "2", "200d"]),
+            warn(row("worker-asg", &["worker-asg",    "5", "0", "10", "3", "2", "100d"]), 4),
+            row("ci-runner-asg",  &["ci-runner-asg",  "1", "0", "4",  "1", "1", "60d"]),
+            row("batch-spot-asg", &["batch-spot-asg", "0", "0", "20", "0", "2", "30d"]),
+        ],
+        // RDS: NAME ENGINE VERSION CLASS STATUS STORAGE MULTI-AZ AGE
+        ResourceKind::Rds => vec![
+            row("app-postgres",          &["app-postgres",         "postgres",   "16.4",   "db.r6g.large", "available",    "200", "yes", "400d"]),
+            row("app-postgres-replica",  &["app-postgres-replica", "postgres",   "16.4",   "db.r6g.large", "available",    "200", "-",   "200d"]),
+            crit(row("reports-mysql",    &["reports-mysql",        "mysql",      "8.0.36", "db.t3.medium", "storage-full", "50",  "-",   "700d"]), 4),
+            row("legacy-oracle",         &["legacy-oracle",        "oracle-se2", "19.0",   "db.m5.large",  "available",    "500", "-",   "1500d"]),
+            warn(row("staging-postgres", &["staging-postgres",     "postgres",   "15.6",   "db.t3.small",  "stopped",      "20",  "-",   "90d"]), 4),
+        ],
+        // DynamoDB: NAME STATUS ITEMS SIZE BILLING AGE
+        ResourceKind::Dynamo => vec![
+            row("dev-sessions",      &["dev-sessions",      "ACTIVE",   "120493",  "88 MB",  "PAY_PER_REQUEST", "300d"]),
+            row("dev-feature-flags", &["dev-feature-flags", "ACTIVE",   "42",      "12 KB",  "PAY_PER_REQUEST", "500d"]),
+            row("dev-events",        &["dev-events",        "ACTIVE",   "9821345", "4.2 GB", "PROVISIONED",     "700d"]),
+            row("dev-locks",         &["dev-locks",         "ACTIVE",   "3",       "1.0 KB", "PAY_PER_REQUEST", "200d"]),
+            warn(row("ml-checkpoints", &["ml-checkpoints",  "CREATING", "0",       "0 B",    "PAY_PER_REQUEST", "1m"]), 1),
+        ],
+        // ELB: NAME TYPE SCHEME STATE VPC-ID AZS AGE — dev-alb matches the
+        // eni-0elb4 requester description
+        ResourceKind::Elb => vec![
+            row("dev-alb",          &["dev-alb",          "application", "internet-facing", "active", "vpc-0dev00000000dev0", "2", "300d"]),
+            row("internal-api-alb", &["internal-api-alb", "application", "internal",        "active", "vpc-0dev00000000dev0", "2", "200d"]),
+            row("kafka-nlb",        &["kafka-nlb",        "network",     "internal",        "active", "vpc-0dev00000000dev0", "2", "150d"]),
+            crit(row("canary-alb",  &["canary-alb",       "application", "internet-facing", "failed", "vpc-0sec00000000sec0", "2", "2d"]), 3),
+        ],
+        // SQS: NAME MESSAGES IN-FLIGHT AGE — a filling DLQ warns
+        ResourceKind::Sqs => vec![
+            row("dev-jobs",              &["dev-jobs",              "12",   "3",  "400d"]),
+            warn(row("dev-jobs-dlq",     &["dev-jobs-dlq",          "47",   "0",  "400d"]), 1),
+            row("email-outbox",          &["email-outbox",          "0",    "0",  "200d"]),
+            row("analytics-events.fifo", &["analytics-events.fifo", "1032", "88", "100d"]),
+            row("img-resize-queue",      &["img-resize-queue",      "5",    "2",  "300d"]),
+        ],
+        // SNS: NAME SUBS ARN — a topic nobody subscribes to warns
+        ResourceKind::Sns => vec![
+            row("dev-alerts",        &["dev-alerts",        "4", "arn:aws:sns:ap-northeast-1:123456789012:dev-alerts"]),
+            row("deploy-events",     &["deploy-events",     "2", "arn:aws:sns:ap-northeast-1:123456789012:deploy-events"]),
+            warn(row("orphan-topic", &["orphan-topic",      "0", "arn:aws:sns:ap-northeast-1:123456789012:orphan-topic"]), 1),
+            row("pagerduty-bridge",  &["pagerduty-bridge",  "1", "arn:aws:sns:ap-northeast-1:123456789012:pagerduty-bridge"]),
+        ],
+        // ECS: NAME STATUS SERVICES RUNNING PENDING INSTANCES
+        ResourceKind::Ecs => vec![
+            row("dev-apps",         &["dev-apps",   "ACTIVE",   "6", "14", "0", "3"]),
+            warn(row("batch",       &["batch",      "ACTIVE",   "2", "3",  "2", "2"]), 4),
+            row("staging",          &["staging",    "ACTIVE",   "4", "8",  "0", "2"]),
+            warn(row("playground",  &["playground", "INACTIVE", "0", "0",  "0", "0"]), 1),
+        ],
+        // EKS: NAME STATUS VERSION PLATFORM AGE
+        ResourceKind::Eks => vec![
+            row("dev-main",          &["dev-main",     "ACTIVE",   "1.31", "eks.12", "400d"]),
+            row("ml-cluster",        &["ml-cluster",   "ACTIVE",   "1.30", "eks.20", "200d"]),
+            warn(row("upgrade-test", &["upgrade-test", "UPDATING", "1.32", "eks.3",  "30d"]), 1),
+        ],
+        // CloudFormation: NAME STATUS AGE UPDATED — rollbacks are critical,
+        // in-progress warns
+        ResourceKind::Cfn => vec![
+            row("dev-network",        &["dev-network",   "UPDATE_COMPLETE",    "700d", "30d"]),
+            row("dev-eks",            &["dev-eks",       "CREATE_COMPLETE",    "400d", "-"]),
+            crit(row("canary-stack",  &["canary-stack",  "ROLLBACK_COMPLETE",  "2d",   "2d"]), 1),
+            warn(row("data-pipeline", &["data-pipeline", "UPDATE_IN_PROGRESS", "300d", "5m"]), 1),
+            row("monitoring",         &["monitoring",    "CREATE_COMPLETE",    "500d", "-"]),
+        ],
     };
     rows.sort_by(|a, b| {
         (a.cells.first().cloned(), a.id.clone()).cmp(&(b.cells.first().cloned(), b.id.clone()))
