@@ -97,6 +97,10 @@ enum Backend {
         ssm: aws_sdk_ssm::Client,
         cw: aws_sdk_cloudwatch::Client,
         sts: aws_sdk_sts::Client,
+        /// Kept so the non-EC2 resource views can build their service
+        /// clients on demand (a client per service per list call is cheap;
+        /// holding 15 clients up front is not).
+        cfg: SdkConfig,
     },
     /// Developer mode (--dev): no AWS calls; list() serves mock_instances().
     Mock,
@@ -135,6 +139,7 @@ impl Inventory {
                 ssm: aws_sdk_ssm::Client::new(cfg),
                 cw: aws_sdk_cloudwatch::Client::new(cfg),
                 sts: aws_sdk_sts::Client::new(cfg),
+                cfg: cfg.clone(),
             },
         }
     }
@@ -221,7 +226,7 @@ impl Inventory {
         kind: crate::resources::ResourceKind,
     ) -> crate::resources::ResourceList {
         match &self.backend {
-            Backend::Aws { ec2, .. } => crate::resources::list_aws(ec2, kind).await,
+            Backend::Aws { ec2, cfg, .. } => crate::resources::list_aws(ec2, cfg, kind).await,
             Backend::Mock => crate::resources::ResourceList {
                 kind,
                 rows: crate::resources::mock(kind),
