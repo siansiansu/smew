@@ -110,13 +110,14 @@ pub(crate) const HEADER_H: u16 = 7;
 /// Keymap rows per menu column in the top panel.
 const MENU_ROWS: usize = 6;
 
+// The smew itself (a floating duck), not lettering.
 const LOGO: [&str; 4] = [
-    r" ___ _ __ ___   _____      __",
-    r"/ __| '_ ` _ \ / _ \ \ /\ / /",
-    r"\__ \ | | | | |  __/\ V  V / ",
-    r"|___/_| |_| |_|\___| \_/\_/  ",
+    r"    __     ",
+    r"  <(o )___ ",
+    r"   ( ._> / ",
+    r"~~~`---'~~~",
 ];
-const LOGO_W: u16 = 29;
+const LOGO_W: u16 = 11;
 
 const LIST_MENU: [(&str, &str); 12] = [
     ("↑↓", "move"),
@@ -706,7 +707,7 @@ mod tests {
         assert!(s.contains("<s>"), "keymap menu missing:\n{s}");
         assert!(s.contains("connect"), "keymap menu missing:\n{s}");
         assert!(s.contains("port-forward"), "keymap menu missing:\n{s}");
-        assert!(s.contains(r"\_/\_/"), "logo missing:\n{s}");
+        assert!(s.contains("<(o )"), "bird logo missing:\n{s}");
     }
 
     #[test]
@@ -728,7 +729,7 @@ mod tests {
     fn narrow_terminal_drops_logo_keeps_info() {
         let m = listed_model();
         let s = render(&m, 60, 30);
-        assert!(!s.contains(r"\_/\_/"), "logo must drop when narrow:\n{s}");
+        assert!(!s.contains("<(o )"), "logo must drop when narrow:\n{s}");
         assert!(s.contains("Region:"), "info block must survive:\n{s}");
     }
 
