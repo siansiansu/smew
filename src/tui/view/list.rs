@@ -435,7 +435,14 @@ fn info_lines(m: &Model) -> Vec<Line<'static>> {
                 Style::new().fg(th.green),
             ),
             Span::styled(" · ", Style::new().fg(th.gray)),
-            Span::styled(auto_label(m), Style::new().fg(th.orange)),
+            if m.syncing {
+                Span::styled(
+                    "syncing…",
+                    Style::new().fg(th.orange).add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled(auto_label(m), Style::new().fg(th.orange))
+            },
         ]),
         Line::from(version_spans),
     ]
@@ -723,6 +730,17 @@ mod tests {
         let s = render(&m, 120, 30);
         assert!(s.contains("111122223333"), "account id missing:\n{s}");
         assert!(s.contains("Admin/alex"), "user label missing:\n{s}");
+    }
+
+    #[test]
+    fn header_shows_live_sync_state() {
+        let mut m = listed_model();
+        let s = render(&m, 120, 30);
+        assert!(s.contains("manual"), "idle label missing:\n{s}");
+        m.syncing = true;
+        let s = render(&m, 120, 30);
+        assert!(s.contains("syncing…"), "sync indicator missing:\n{s}");
+        assert!(!s.contains("manual"), "idle label must yield:\n{s}");
     }
 
     #[test]

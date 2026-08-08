@@ -12,9 +12,9 @@ default_profile: ""
 # Default AWS region when --region is not given.
 default_region: ap-northeast-1
 
-# Auto-refresh interval for the inventory (duration: "30s", "2m", "1h").
-# Unset defaults to 30s; "0" disables it (manual "r" only).
-refresh_interval: "30s"
+# Auto-refresh interval for the active view (duration: "10s", "2m", "1h").
+# Unset defaults to 10s (floor 5s); "0" disables it (manual refresh only).
+refresh_interval: "10s"
 
 # Multiplexer leader (prefix) key inside a split session.
 # Examples: "ctrl+a", "ctrl+ " (ctrl+space). Default "ctrl+b".

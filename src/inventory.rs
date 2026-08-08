@@ -262,18 +262,51 @@ impl Inventory {
     }
 }
 
-/// The AWS-backed listing (the mock backend skips all of this).
+/// The AWS-backed listing (the mock backend skips all of this). The EC2 and
+/// SSM listings are independent, so they run concurrently — sync takes as
+/// long as the slower of the two, not their sum.
 async fn list_aws(ec2: &aws_sdk_ec2::Client, ssm: &aws_sdk_ssm::Client) -> ListResult {
-    let mut res = ListResult::default();
-    let mut by_id: HashMap<String, Instance> = HashMap::new();
+    let (ec2_out, ssm_out) = tokio::join!(fetch_ec2(ec2), fetch_ssm(ssm));
+    let (mut by_id, mut warnings) = ec2_out;
+    let (ssm_info, ssm_warnings) = ssm_out;
+    warnings.extend(ssm_warnings);
 
-    // EC2 detail — primary listing.
+    // Merge SSM reachability onto the EC2 records.
+    for (id, name, platform, st) in ssm_info {
+        if let Some(inst) = by_id.get_mut(&id) {
+            inst.ssm = Some(st);
+            continue;
+        }
+        // SSM knows about it but EC2 describe didn't return it
+        // (e.g. ec2:DescribeInstances denied). Keep a minimal record.
+        by_id.insert(
+            id.clone(),
+            Instance {
+                name: if name.is_empty() { id.clone() } else { name },
+                instance_id: id,
+                platform,
+                ssm: Some(st),
+                ..Default::default()
+            },
+        );
+    }
+
+    ListResult {
+        instances: by_id.into_values().collect(),
+        warnings,
+    }
+}
+
+/// EC2 detail — the primary listing.
+async fn fetch_ec2(ec2: &aws_sdk_ec2::Client) -> (HashMap<String, Instance>, Vec<Warning>) {
+    let mut by_id = HashMap::new();
+    let mut warnings = Vec::new();
     let mut pages = ec2.describe_instances().into_paginator().send();
     while let Some(page) = pages.next().await {
         let page = match page {
             Ok(p) => p,
             Err(e) => {
-                res.warnings.push(Warning {
+                warnings.push(Warning {
                     op: "ec2:DescribeInstances",
                     err: aws_err(&e),
                 });
@@ -287,14 +320,21 @@ async fn list_aws(ec2: &aws_sdk_ec2::Client, ssm: &aws_sdk_ssm::Client) -> ListR
             }
         }
     }
+    (by_id, warnings)
+}
 
-    // SSM reachability — merged onto EC2 records.
+/// SSM agent reachability: (instance id, SSM-reported name, platform, status).
+type SsmInfo = (String, String, String, SsmStatus);
+
+async fn fetch_ssm(ssm: &aws_sdk_ssm::Client) -> (Vec<SsmInfo>, Vec<Warning>) {
+    let mut out = Vec::new();
+    let mut warnings = Vec::new();
     let mut pages = ssm.describe_instance_information().into_paginator().send();
     while let Some(page) = pages.next().await {
         let page = match page {
             Ok(p) => p,
             Err(e) => {
-                res.warnings.push(Warning {
+                warnings.push(Warning {
                     op: "ssm:DescribeInstanceInformation",
                     err: aws_err(&e),
                 });
@@ -302,7 +342,6 @@ async fn list_aws(ec2: &aws_sdk_ec2::Client, ssm: &aws_sdk_ssm::Client) -> ListR
             }
         };
         for info in page.instance_information_list() {
-            let id = info.instance_id().unwrap_or_default().to_string();
             let st = SsmStatus {
                 online: info.ping_status() == Some(&PingStatus::Online),
                 agent_version: info.agent_version().unwrap_or_default().to_string(),
@@ -311,35 +350,17 @@ async fn list_aws(ec2: &aws_sdk_ec2::Client, ssm: &aws_sdk_ssm::Client) -> ListR
                     .map(|p| p.as_str().to_string())
                     .unwrap_or_default(),
             };
-            if let Some(inst) = by_id.get_mut(&id) {
-                inst.ssm = Some(st);
-                continue;
-            }
-            // SSM knows about it but EC2 describe didn't return it
-            // (e.g. ec2:DescribeInstances denied). Keep a minimal record.
-            let name = info.name().unwrap_or_default();
-            by_id.insert(
-                id.clone(),
-                Instance {
-                    name: if name.is_empty() {
-                        id.clone()
-                    } else {
-                        name.to_string()
-                    },
-                    instance_id: id,
-                    platform: info
-                        .platform_type()
-                        .map(|p| p.as_str().to_string())
-                        .unwrap_or_default(),
-                    ssm: Some(st),
-                    ..Default::default()
-                },
-            );
+            out.push((
+                info.instance_id().unwrap_or_default().to_string(),
+                info.name().unwrap_or_default().to_string(),
+                info.platform_type()
+                    .map(|p| p.as_str().to_string())
+                    .unwrap_or_default(),
+                st,
+            ));
         }
     }
-
-    res.instances = by_id.into_values().collect();
-    res
+    (out, warnings)
 }
 
 /// CWAgent metric names that carry memory-used-percent (Linux and Windows

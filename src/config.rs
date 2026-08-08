@@ -9,7 +9,12 @@ use std::time::Duration;
 use serde::Deserialize;
 
 /// Auto-refresh interval when refresh_interval is unset.
-const DEFAULT_REFRESH: Duration = Duration::from_secs(30);
+const DEFAULT_REFRESH: Duration = Duration::from_secs(10);
+
+/// The fastest allowed auto-refresh. Every sync is two list calls (EC2 +
+/// SSM, run concurrently); anything quicker just burns API quota on
+/// identical answers. Configured values below this are raised to it.
+const MIN_REFRESH: Duration = Duration::from_secs(5);
 
 /// Mirrors config.yaml. `refresh_interval` is a duration string such as
 /// "30s" or "2m"; empty / "0" disables auto-refresh. Unknown keys are
@@ -68,9 +73,10 @@ impl Config {
         }
     }
 
-    /// Parses refresh_interval. Unset defaults to 30s (auto-refresh on); an
+    /// Parses refresh_interval. Unset defaults to 10s (auto-refresh on); an
     /// explicit "0" (or a negative duration) disables it; an invalid value
-    /// falls back to the default. Duration::ZERO means "off".
+    /// falls back to the default; anything below the 5s floor is raised to
+    /// it. Duration::ZERO means "off".
     pub fn refresh_interval(&self) -> Duration {
         let s = self.refresh_interval.trim();
         if s.is_empty() {
@@ -87,7 +93,11 @@ impl Config {
                 DEFAULT_REFRESH
             };
         }
-        parse_duration(s).unwrap_or(DEFAULT_REFRESH)
+        match parse_duration(s) {
+            Some(Duration::ZERO) => Duration::ZERO, // "0s" and friends = off
+            Some(d) => d.max(MIN_REFRESH),
+            None => DEFAULT_REFRESH,
+        }
     }
 }
 
@@ -165,7 +175,7 @@ mod tests {
     fn interval_defaults_and_overrides() {
         assert_eq!(
             Config::default().refresh_interval(),
-            Duration::from_secs(30)
+            Duration::from_secs(10)
         );
         assert_eq!(
             cfg("refresh_interval: \"45s\"").refresh_interval(),
@@ -185,7 +195,12 @@ mod tests {
         );
         assert_eq!(
             cfg("refresh_interval: \"bogus\"").refresh_interval(),
-            Duration::from_secs(30)
+            Duration::from_secs(10)
+        );
+        // below the floor → raised to the 5s minimum
+        assert_eq!(
+            cfg("refresh_interval: \"1s\"").refresh_interval(),
+            Duration::from_secs(5)
         );
         // Go-style compound and fractional durations must be honored.
         assert_eq!(
@@ -202,7 +217,8 @@ mod tests {
         );
         assert_eq!(
             cfg("refresh_interval: \"500ms\"").refresh_interval(),
-            Duration::from_millis(500)
+            Duration::from_secs(5),
+            "sub-floor values are raised to the minimum"
         );
     }
 
@@ -235,7 +251,7 @@ mod tests {
         // deny_unknown_fields this catches any drift between the two.
         let c = cfg(include_str!("../config.example.yaml"));
         assert_eq!(c.default_region, "ap-northeast-1");
-        assert_eq!(c.refresh_interval(), Duration::from_secs(30));
+        assert_eq!(c.refresh_interval(), Duration::from_secs(10));
     }
 
     #[test]

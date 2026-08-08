@@ -285,6 +285,8 @@ pub struct Model {
 
     pub(crate) status: String,
     pub(crate) loading: bool,
+    /// A list refresh is in flight (header shows "syncing…").
+    pub(crate) syncing: bool,
     pub(crate) width: u16,
     pub(crate) height: u16,
     pub(crate) mouse: bool,
@@ -370,6 +372,7 @@ impl Model {
             h_offset: 0,
             status: String::new(),
             loading: false,
+            syncing: false,
             width: 0,
             height: 0,
             mouse: opts.mouse,
@@ -401,7 +404,7 @@ impl Model {
     }
 
     /// Kicks off the initial load + version check.
-    pub fn init(&self) {
+    pub fn init(&mut self) {
         if self.inventory.is_some() && self.mode != Mode::Profiles {
             self.spawn_load();
             self.spawn_identity();
@@ -411,10 +414,11 @@ impl Model {
 
     // ---- async command spawns ----
 
-    fn spawn_load(&self) {
+    fn spawn_load(&mut self) {
         let Some(inv) = self.inventory.clone() else {
             return;
         };
+        self.syncing = true;
         let tx = self.tx.clone();
         let generation = self.load_gen;
         self.rt.spawn(async move {
@@ -424,10 +428,11 @@ impl Model {
     }
 
     /// Loads the active non-instance resource view.
-    pub(super) fn spawn_load_resources(&self) {
+    pub(super) fn spawn_load_resources(&mut self) {
         let Some(inv) = self.inventory.clone() else {
             return;
         };
+        self.syncing = true;
         let tx = self.tx.clone();
         let kind = self.view;
         let generation = self.load_gen;
@@ -438,7 +443,7 @@ impl Model {
     }
 
     /// Refreshes whichever view is active.
-    pub(super) fn spawn_load_active(&self) {
+    pub(super) fn spawn_load_active(&mut self) {
         if self.view == ResourceKind::Instances {
             self.spawn_load();
         } else {
@@ -595,6 +600,7 @@ impl Model {
                     return; // stale: answered an older profile/view
                 }
                 self.loading = false;
+                self.syncing = false;
                 self.last_sync = Some(chrono::Local::now());
                 self.all = res.instances;
                 let warnings = res.warnings.len();
@@ -623,6 +629,7 @@ impl Model {
                     return; // stale or answers a view we already left
                 }
                 self.loading = false;
+                self.syncing = false;
                 self.last_sync = Some(chrono::Local::now());
                 self.res_kind = res.kind;
                 self.res_all = res.rows;
