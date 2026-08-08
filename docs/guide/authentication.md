@@ -26,9 +26,10 @@ Two things to know beyond the matrix:
   `~/.aws/config` and `~/.aws/credentials` directly (honoring
   `AWS_CONFIG_FILE` / `AWS_SHARED_CREDENTIALS_FILE`) — no network call, no
   credential use, until you actually select a profile.
-- **One session process, one profile.** Sessions shell out to
-  `aws ssm start-session --profile <name>`, so the aws CLI re-resolves the
-  same credentials; smew never forwards secrets to the child process itself.
+- **One session process, one profile.** Each session pane re-invokes smew
+  with the profile name; that process resolves the same credentials through
+  the SDK, calls `ssm:StartSession`, and hands the encrypted channel to
+  session-manager-plugin. No secrets are forwarded between processes.
 
 ## SSO token expiry
 

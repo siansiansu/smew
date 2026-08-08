@@ -1,4 +1,6 @@
-//! PluginDriver drives sessions via the aws CLI + session-manager-plugin.
+//! PluginDriver builds the argv a session pane runs: `smew ssm-session …`
+//! (which calls ssm:StartSession itself and execs session-manager-plugin).
+//! No aws CLI involved.
 
 /// Guards values that end up inside a `--parameters` JSON element or a
 /// generated `sh -c` string: only ASCII alphanumerics plus the given extra
@@ -23,6 +25,15 @@ fn check_charset(what: &str, value: &str, extra: &str) -> Result<(), String> {
 /// absent: quotes, whitespace, `$`, backticks, and backslashes.
 const SHELL_SAFE_EXTRA: &str = "._:/@~+-";
 
+/// The path of the running smew binary — session panes re-invoke it for
+/// the internal `ssm-session` runner. Falls back to "smew" on PATH.
+fn smew_exe() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+        .unwrap_or_else(|| "smew".to_string())
+}
+
 /// Configures SSH-over-SSM config generation.
 #[derive(Debug, Clone)]
 pub struct SshOptions {
@@ -33,7 +44,7 @@ pub struct SshOptions {
     pub public_key: String,
 }
 
-/// Drives sessions via the aws CLI + session-manager-plugin.
+/// Builds session argvs (smew's own ssm-session / ssh-proxy runners).
 #[derive(Debug, Clone)]
 pub struct PluginDriver {
     profile: String,
@@ -44,7 +55,7 @@ pub struct PluginDriver {
 
 impl PluginDriver {
     /// Returns a driver bound to a profile/region (either may be empty to
-    /// defer to the aws CLI's own resolution).
+    /// defer to the SDK's own resolution).
     pub fn new(profile: &str, region: &str) -> Self {
         Self {
             profile: profile.to_string(),
@@ -54,7 +65,7 @@ impl PluginDriver {
     }
 
     /// A developer-mode driver: "sessions" run a local shell and
-    /// port-forwards run a placeholder loop — no aws CLI, no network. The
+    /// port-forwards run a placeholder loop — no AWS calls, no network. The
     /// panes are real PTYs, so multiplexing/broadcast/reaping behave exactly
     /// as in production.
     pub fn dev() -> Self {
@@ -65,8 +76,8 @@ impl PluginDriver {
         }
     }
 
-    /// The `--region` / `--profile` pairs to append to every aws invocation
-    /// (a flag is omitted when its value is empty, deferring to the CLI).
+    /// The `--region` / `--profile` pairs to append to every runner argv
+    /// (a flag is omitted when its value is empty, deferring to the SDK).
     fn flag_pairs(&self) -> impl Iterator<Item = (&'static str, &str)> {
         [
             ("--region", self.region.as_str()),
@@ -77,7 +88,7 @@ impl PluginDriver {
     }
 
     /// Builds the argv for
-    /// `aws ssm start-session --target <id> [--region ..] [--profile ..]`.
+    /// `smew ssm-session --target <id> [--region ..] [--profile ..]`.
     /// In developer mode it runs the user's shell locally instead, after a
     /// banner naming the would-be target.
     pub fn shell_command(&self, target: &str) -> Vec<String> {
@@ -91,7 +102,7 @@ impl PluginDriver {
                 target.to_string(),
             ];
         }
-        ["aws", "ssm", "start-session", "--target", target]
+        [smew_exe().as_str(), "ssm-session", "--target", target]
             .into_iter()
             .map(String::from)
             .chain(
@@ -132,80 +143,63 @@ impl PluginDriver {
                 dest.to_string(),
             ]);
         }
-        let (doc, params) = if remote_host.is_empty() {
-            (
-                "AWS-StartPortForwardingSession",
-                format!(r#"{{"portNumber":["{remote_port}"],"localPortNumber":["{local_port}"]}}"#),
-            )
-        } else {
-            (
-                "AWS-StartPortForwardingSessionToRemoteHost",
-                format!(
-                    r#"{{"host":["{remote_host}"],"portNumber":["{remote_port}"],"localPortNumber":["{local_port}"]}}"#
-                ),
-            )
-        };
-        Ok([
-            "aws",
-            "ssm",
-            "start-session",
-            "--target",
-            target,
-            "--document-name",
-            doc,
-            "--parameters",
-            &params,
-        ]
-        .into_iter()
-        .map(String::from)
-        .chain(
+        let mut argv = vec![
+            smew_exe(),
+            "ssm-session".to_string(),
+            "--target".to_string(),
+            target.to_string(),
+            "--doc".to_string(),
+            if remote_host.is_empty() {
+                "AWS-StartPortForwardingSession"
+            } else {
+                "AWS-StartPortForwardingSessionToRemoteHost"
+            }
+            .to_string(),
+        ];
+        if !remote_host.is_empty() {
+            argv.push("--param".to_string());
+            argv.push(format!("host={remote_host}"));
+        }
+        argv.push("--param".to_string());
+        argv.push(format!("portNumber={remote_port}"));
+        argv.push("--param".to_string());
+        argv.push(format!("localPortNumber={local_port}"));
+        argv.extend(
             self.flag_pairs()
                 .flat_map(|(flag, value)| [flag.to_string(), value.to_string()]),
-        )
-        .collect())
+        );
+        Ok(argv)
     }
 
-    fn aws_flags(&self) -> String {
-        let mut s = String::new();
-        for (flag, value) in self.flag_pairs() {
-            s.push(' ');
-            s.push_str(flag);
-            s.push(' ');
-            s.push_str(value);
-        }
-        s
-    }
-
-    /// Builds the ssh ProxyCommand that tunnels SSH over SSM via the
-    /// AWS-StartSSHSession document. ssh substitutes %h (instance id),
-    /// %p (port), and %r (login user). No inbound port is opened.
+    /// Builds the ssh ProxyCommand that tunnels SSH over SSM:
+    /// `smew ssh-proxy` calls StartSession itself (pushing a 60-second EC2
+    /// Instance Connect key first in ephemeral mode) and streams SSH over
+    /// the plugin on stdio. ssh substitutes %h (instance id), %p (port),
+    /// and %r (login user). No inbound port is opened, no aws CLI involved.
     ///
-    /// In ephemeral mode it first pushes a 60-second public key via EC2
-    /// Instance Connect (its JSON output is discarded so it doesn't corrupt
-    /// the SSH stream).
-    ///
-    /// The profile, region, and key path are interpolated into an
-    /// `sh -c "…"` string, so they are charset-checked first; a value that
-    /// would need quoting is rejected rather than emitted broken.
+    /// ssh runs the ProxyCommand through `sh`, so the interpolated values
+    /// are charset-checked first; one that would need quoting is rejected
+    /// rather than emitted broken.
     pub fn ssh_proxy_command(&self, opt: &SshOptions) -> Result<String, String> {
         check_charset("profile", &self.profile, SHELL_SAFE_EXTRA)?;
         check_charset("region", &self.region, SHELL_SAFE_EXTRA)?;
         if opt.ephemeral {
             check_charset("ssh public key path", &opt.public_key, SHELL_SAFE_EXTRA)?;
         }
-        let ssm = format!(
-            "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'{}",
-            self.aws_flags()
-        );
+        // "smew" from PATH on purpose: the block lands in ~/.ssh/config and
+        // must outlive whatever build generated it.
+        let mut cmd = String::from("smew ssh-proxy --target %h --port %p --user %r");
         if opt.ephemeral {
-            let push = format!(
-                "aws ec2-instance-connect send-ssh-public-key --instance-id %h --instance-os-user %r --ssh-public-key 'file://{}'{} >/dev/null",
-                opt.public_key,
-                self.aws_flags()
-            );
-            return Ok(format!("sh -c \"{push} && {ssm}\""));
+            cmd.push_str(" --public-key ");
+            cmd.push_str(&opt.public_key);
         }
-        Ok(format!("sh -c \"{ssm}\""))
+        for (flag, value) in self.flag_pairs() {
+            cmd.push(' ');
+            cmd.push_str(flag);
+            cmd.push(' ');
+            cmd.push_str(value);
+        }
+        Ok(cmd)
     }
 
     /// Returns a ~/.ssh/config block matching instance ids so that
@@ -239,12 +233,12 @@ mod tests {
     #[test]
     fn shell_command_args() {
         let d = PluginDriver::new("prod", "ap-northeast-1");
+        let argv = d.shell_command("i-0abc");
+        // argv[0] is the running smew binary (varies under test)
         assert_eq!(
-            d.shell_command("i-0abc"),
-            vec![
-                "aws",
-                "ssm",
-                "start-session",
+            &argv[1..],
+            [
+                "ssm-session",
                 "--target",
                 "i-0abc",
                 "--region",
@@ -255,27 +249,31 @@ mod tests {
         );
         let d = PluginDriver::new("", "");
         assert_eq!(
-            d.shell_command("i-1"),
-            vec!["aws", "ssm", "start-session", "--target", "i-1"]
+            &d.shell_command("i-1")[1..],
+            ["ssm-session", "--target", "i-1"]
         );
     }
 
     #[test]
     fn port_forward_command_args() {
         let d = PluginDriver::new("prod", "ap-northeast-1");
+        let argv = d
+            .port_forward_command("i-0abc", 15432, "db.internal", 5432)
+            .unwrap();
         assert_eq!(
-            d.port_forward_command("i-0abc", 15432, "db.internal", 5432)
-                .unwrap(),
-            vec![
-                "aws",
-                "ssm",
-                "start-session",
+            &argv[1..],
+            [
+                "ssm-session",
                 "--target",
                 "i-0abc",
-                "--document-name",
+                "--doc",
                 "AWS-StartPortForwardingSessionToRemoteHost",
-                "--parameters",
-                r#"{"host":["db.internal"],"portNumber":["5432"],"localPortNumber":["15432"]}"#,
+                "--param",
+                "host=db.internal",
+                "--param",
+                "portNumber=5432",
+                "--param",
+                "localPortNumber=15432",
                 "--region",
                 "ap-northeast-1",
                 "--profile",
@@ -285,17 +283,17 @@ mod tests {
         // No remote host → forward to the instance itself.
         let d = PluginDriver::new("", "");
         assert_eq!(
-            d.port_forward_command("i-1", 8080, "", 80).unwrap(),
-            vec![
-                "aws",
-                "ssm",
-                "start-session",
+            &d.port_forward_command("i-1", 8080, "", 80).unwrap()[1..],
+            [
+                "ssm-session",
                 "--target",
                 "i-1",
-                "--document-name",
+                "--doc",
                 "AWS-StartPortForwardingSession",
-                "--parameters",
-                r#"{"portNumber":["80"],"localPortNumber":["8080"]}"#,
+                "--param",
+                "portNumber=80",
+                "--param",
+                "localPortNumber=8080",
             ]
         );
     }
@@ -313,7 +311,7 @@ mod tests {
         assert_eq!(&sh[..2], ["sh", "-c"]);
         assert!(sh[2].contains("$0"), "{}", sh[2]);
         assert_eq!(sh[3], "i-0abc");
-        assert!(!sh[2].contains("aws "), "{}", sh[2]);
+        assert!(!sh[2].contains("ssm-session"), "{}", sh[2]);
 
         let fwd = d
             .port_forward_command("i-0abc", 15432, "db.internal", 5432)
@@ -322,7 +320,7 @@ mod tests {
         assert!(fwd[2].contains("localhost:15432"), "{}", fwd[2]);
         assert!(fwd[2].contains("$0:5432"), "{}", fwd[2]);
         assert_eq!(fwd[3], "db.internal");
-        assert!(!fwd[2].contains("aws "), "{}", fwd[2]);
+        assert!(!fwd[2].contains("ssm-session"), "{}", fwd[2]);
 
         // Without a remote host, the forward targets the instance itself.
         let fwd = d.port_forward_command("i-1", 8080, "", 80).unwrap();
@@ -390,7 +388,7 @@ mod tests {
             block,
             "# smew · static key · profile prod · region ap-northeast-1\n\
              Host i-* mi-*\n\
-             \x20 ProxyCommand sh -c \"aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p' --region ap-northeast-1 --profile prod\"\n"
+             \x20 ProxyCommand smew ssh-proxy --target %h --port %p --user %r --region ap-northeast-1 --profile prod\n"
         );
     }
 
@@ -403,9 +401,12 @@ mod tests {
                 public_key: "/home/u/.ssh/id_ed25519.pub".into(),
             })
             .unwrap();
-        assert!(block.contains(
-            "ProxyCommand sh -c \"aws ec2-instance-connect send-ssh-public-key --instance-id %h --instance-os-user %r --ssh-public-key 'file:///home/u/.ssh/id_ed25519.pub' >/dev/null && aws ssm start-session --target %h"
-        ));
+        assert!(
+            block.contains(
+                "ProxyCommand smew ssh-proxy --target %h --port %p --user %r --public-key /home/u/.ssh/id_ed25519.pub"
+            ),
+            "{block}"
+        );
         assert!(block.starts_with("# smew · ephemeral (EC2 Instance Connect)\n"));
     }
 }

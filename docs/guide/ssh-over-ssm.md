@@ -27,5 +27,10 @@ for Oracle Linux) and IAM `ec2-instance-connect:SendSSHPublicKey` +
 - `--ssh-static` — use a key already in the host's `authorized_keys` instead
   (no Instance Connect / no `SendSSHPublicKey` permission needed).
 
-Either way `sshd` must be running on the host. The detail view (`d`) shows the
-ready commands per host.
+Either way `sshd` must be running on the host. The describe page (`d`) shows
+the ready commands per host.
+
+The generated `ProxyCommand` re-invokes `smew ssh-proxy`, so `smew` must be
+on your `PATH` (and the aws CLI is not needed). If your config block predates
+v1.2 (it mentioned `aws ssm start-session`), regenerate it with the command
+above.

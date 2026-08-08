@@ -38,9 +38,9 @@ cargo build --release     # → target/release/smew
 ## Docker
 
 The repo ships a multi-stage `Dockerfile` whose image bundles smew with the
-AWS CLI v2 and the session-manager-plugin (nothing to install on the host)
-and runs as the non-root user `smew`. It is not published to any registry —
-build it locally:
+session-manager-plugin (nothing to install on the host) and runs as the
+non-root user `smew`. It is not published to any registry — build it
+locally:
 
 ```sh
 make docker-build         # or: docker build -t smew .
@@ -61,17 +61,37 @@ token under `~/.aws/sso/` comes along with the same mount.
 
 ## Prerequisites
 
-smew drives the official AWS tooling — you need:
+One external binary: AWS's
+[`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html),
+which carries the encrypted session traffic. smew makes every API call
+itself (including `ssm:StartSession`), so the aws CLI is **not** required.
 
-- the [`aws` CLI](https://docs.aws.amazon.com/cli/)
-- the [`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
+::: code-group
 
-```sh
-brew install awscli session-manager-plugin
+```sh [macOS]
+brew install --cask session-manager-plugin
 ```
 
-(The [Docker image](#docker) already includes both. `smew --dev` needs
-neither — it runs the whole TUI offline against a mock inventory.)
+```sh [Ubuntu / Debian]
+curl -o /tmp/session-manager-plugin.deb \
+  "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_64bit/session-manager-plugin.deb"
+sudo dpkg -i /tmp/session-manager-plugin.deb
+```
+
+```sh [RHEL / Fedora]
+sudo dnf install -y \
+  "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/linux_64bit/session-manager-plugin.rpm"
+```
+
+:::
+
+On arm64 Linux, replace `ubuntu_64bit` / `linux_64bit` with
+`ubuntu_arm64` / `linux_arm64`. Verify with `session-manager-plugin`
+(it prints a hello message).
+
+The plugin is only needed to open sessions — browsing resources works
+without it. The [Docker image](#docker) already includes it, and
+`smew --dev` runs the whole TUI offline with no AWS tooling at all.
 
 ### IAM permissions
 

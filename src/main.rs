@@ -11,6 +11,8 @@ use smew::{aws, config, inventory, theme, tui, version};
 #[derive(Parser, Debug)]
 #[command(name = "smew", disable_version_flag = true)]
 struct Cli {
+    #[command(subcommand)]
+    cmd: Option<Cmd>,
     /// AWS profile (default: config / env / shared default profile)
     #[arg(long)]
     profile: Option<String>,
@@ -40,12 +42,109 @@ struct Cli {
     version: bool,
 }
 
+/// Internal runners. Session panes and the generated ssh ProxyCommand
+/// re-invoke smew with these; they call ssm:StartSession through the SDK
+/// and exec session-manager-plugin — no aws CLI anywhere.
+#[derive(clap::Subcommand, Debug)]
+enum Cmd {
+    /// Start an SSM session and hand it to session-manager-plugin (internal)
+    #[command(hide = true, name = "ssm-session")]
+    SsmSession {
+        /// Instance id (i-… / mi-…)
+        #[arg(long)]
+        target: String,
+        /// SSM document (omitted = interactive shell)
+        #[arg(long)]
+        doc: Option<String>,
+        /// Document parameter as key=value (repeatable)
+        #[arg(long = "param")]
+        params: Vec<String>,
+        #[arg(long, default_value = "")]
+        profile: String,
+        #[arg(long, default_value = "")]
+        region: String,
+    },
+    /// ssh ProxyCommand: optional EC2 Instance Connect key push, then the
+    /// SSH-over-SSM stream on stdio (internal)
+    #[command(hide = true, name = "ssh-proxy")]
+    SshProxy {
+        /// Instance id (%h in ssh_config)
+        #[arg(long)]
+        target: String,
+        /// SSH port (%p)
+        #[arg(long)]
+        port: u16,
+        /// Login user (%r) — the EC2 Instance Connect OS user
+        #[arg(long, default_value = "ec2-user")]
+        user: String,
+        /// Public key to push via EC2 Instance Connect (ephemeral mode);
+        /// omit when the key is already in authorized_keys
+        #[arg(long)]
+        public_key: Option<String>,
+        #[arg(long, default_value = "")]
+        profile: String,
+        #[arg(long, default_value = "")]
+        region: String,
+    },
+}
+
+/// Runs an internal subcommand. Returns only on failure (success execs the
+/// plugin); the caller prints the message and exits non-zero.
+async fn run_internal(cmd: Cmd) -> String {
+    use smew::session::ssm;
+    match cmd {
+        Cmd::SsmSession {
+            target,
+            doc,
+            params,
+            profile,
+            region,
+        } => {
+            let mut kv = Vec::new();
+            for p in &params {
+                match ssm::parse_param(p) {
+                    Ok(x) => kv.push(x),
+                    Err(e) => return e,
+                }
+            }
+            ssm::exec_session(&profile, &region, &target, doc.as_deref(), &kv).await
+        }
+        Cmd::SshProxy {
+            target,
+            port,
+            user,
+            public_key,
+            profile,
+            region,
+        } => {
+            ssm::exec_ssh_proxy(
+                &profile,
+                &region,
+                &target,
+                port,
+                &user,
+                public_key.as_deref(),
+            )
+            .await
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
     if cli.version {
         println!("{}", version::details());
         return;
+    }
+
+    // Internal runners exec session-manager-plugin and never return on
+    // success; reaching the eprintln means the session could not start.
+    if let Some(cmd) = cli.cmd {
+        let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+        let err = rt.block_on(run_internal(cmd));
+        eprintln!("{err}");
+        std::process::exit(1);
     }
 
     // Load config (optional file); CLI flags take precedence over it.

@@ -344,6 +344,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-ec2instanceconnect"
+version = "1.93.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "119f786f57489edcc6c89d6831b01f3574574657f40618ebdbbda3e7045032b2"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand",
+ "http 0.2.12",
+ "http 1.5.0",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-ecs"
 version = "1.111.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3155,6 +3179,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_json"
+version = "1.0.151"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
+dependencies = [
+ "itoa",
+ "memchr",
+ "serde",
+ "serde_core",
+ "zmij",
+]
+
+[[package]]
 name = "serde_yaml_ng"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3297,6 +3334,7 @@ dependencies = [
  "aws-sdk-cloudwatch",
  "aws-sdk-dynamodb",
  "aws-sdk-ec2",
+ "aws-sdk-ec2instanceconnect",
  "aws-sdk-ecs",
  "aws-sdk-eks",
  "aws-sdk-elasticloadbalancingv2",
@@ -3316,6 +3354,7 @@ dependencies = [
  "portable-pty",
  "ratatui",
  "serde",
+ "serde_json",
  "serde_yaml_ng",
  "tempfile",
  "tokio",
@@ -4309,3 +4348,9 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "zmij"
+version = "1.0.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"

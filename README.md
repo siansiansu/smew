@@ -62,8 +62,10 @@ Prebuilt binaries for macOS / Linux (x86_64 + arm64) are on the
 [releases page](https://github.com/siansiansu/smew/releases).
 To run in Docker: `make docker-build && make docker-run`.
 
-Requires the [`aws` CLI](https://docs.aws.amazon.com/cli/) and the
-[`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html).
+Sessions need one external binary — AWS's
+[`session-manager-plugin`](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
+(`brew install --cask session-manager-plugin`). The aws CLI is not
+required; smew makes every API call itself.
 
 ## Quick start
 
