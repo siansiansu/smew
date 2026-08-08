@@ -92,18 +92,23 @@ pub struct Inventory {
 
 #[derive(Clone)]
 enum Backend {
-    Aws {
-        ec2: aws_sdk_ec2::Client,
-        ssm: aws_sdk_ssm::Client,
-        cw: aws_sdk_cloudwatch::Client,
-        sts: aws_sdk_sts::Client,
-        /// Kept so the non-EC2 resource views can build their service
-        /// clients on demand (a client per service per list call is cheap;
-        /// holding 15 clients up front is not).
-        cfg: SdkConfig,
-    },
+    /// Boxed: the client bundle dwarfs the Mock variant.
+    Aws(Box<AwsClients>),
     /// Developer mode (--dev): no AWS calls; list() serves mock_instances().
     Mock,
+}
+
+/// The long-lived AWS clients plus the SdkConfig they were built from —
+/// kept so the non-EC2 resource views can build their service clients on
+/// demand (a client per service per list call is cheap; holding 15 clients
+/// up front is not).
+#[derive(Clone)]
+struct AwsClients {
+    ec2: aws_sdk_ec2::Client,
+    ssm: aws_sdk_ssm::Client,
+    cw: aws_sdk_cloudwatch::Client,
+    sts: aws_sdk_sts::Client,
+    cfg: SdkConfig,
 }
 
 /// Who the resolved credentials are (sts:GetCallerIdentity), shown in the
@@ -134,13 +139,13 @@ impl Inventory {
     /// Builds an Inventory from a loaded SdkConfig.
     pub fn new(cfg: &SdkConfig) -> Self {
         Self {
-            backend: Backend::Aws {
+            backend: Backend::Aws(Box::new(AwsClients {
                 ec2: aws_sdk_ec2::Client::new(cfg),
                 ssm: aws_sdk_ssm::Client::new(cfg),
                 cw: aws_sdk_cloudwatch::Client::new(cfg),
                 sts: aws_sdk_sts::Client::new(cfg),
                 cfg: cfg.clone(),
-            },
+            })),
         }
     }
 
@@ -154,13 +159,14 @@ impl Inventory {
 
     /// Resolves who the credentials are via sts:GetCallerIdentity.
     pub async fn identity(&self) -> Result<CallerIdentity, String> {
-        let Backend::Aws { sts, .. } = &self.backend else {
+        let Backend::Aws(aws) = &self.backend else {
             return Ok(CallerIdentity {
                 account: "123456789012".to_string(),
                 arn: "arn:aws:sts::123456789012:assumed-role/DevRole/smew-dev".to_string(),
             });
         };
-        let out = sts
+        let out = aws
+            .sts
             .get_caller_identity()
             .send()
             .await
@@ -173,10 +179,11 @@ impl Inventory {
 
     /// Requests an EC2 reboot of the instance (ec2:RebootInstances).
     pub async fn reboot(&self, instance_id: &str) -> Result<(), String> {
-        let Backend::Aws { ec2, .. } = &self.backend else {
+        let Backend::Aws(aws) = &self.backend else {
             return Ok(()); // dev mode: pretend success
         };
-        ec2.reboot_instances()
+        aws.ec2
+            .reboot_instances()
             .instance_ids(instance_id)
             .send()
             .await
@@ -187,10 +194,11 @@ impl Inventory {
     /// Reads the published latest version from an SSM Parameter Store
     /// parameter (used for the update check). Returns "" if unset/empty.
     pub async fn latest_version(&self, param: &str) -> Result<String, String> {
-        let Backend::Aws { ssm, .. } = &self.backend else {
+        let Backend::Aws(aws) = &self.backend else {
             return Ok(String::new()); // dev mode: no update check
         };
-        let out = ssm
+        let out = aws
+            .ssm
             .get_parameter()
             .name(param)
             .send()
@@ -208,7 +216,7 @@ impl Inventory {
     /// detail with SSM reachability. Partial failures are reported as Warnings.
     pub async fn list(&self) -> ListResult {
         let mut res = match &self.backend {
-            Backend::Aws { ec2, ssm, .. } => list_aws(ec2, ssm).await,
+            Backend::Aws(aws) => list_aws(&aws.ec2, &aws.ssm).await,
             Backend::Mock => ListResult {
                 instances: mock_instances(),
                 warnings: Vec::new(),
@@ -226,7 +234,7 @@ impl Inventory {
         kind: crate::resources::ResourceKind,
     ) -> crate::resources::ResourceList {
         match &self.backend {
-            Backend::Aws { ec2, cfg, .. } => crate::resources::list_aws(ec2, cfg, kind).await,
+            Backend::Aws(aws) => crate::resources::list_aws(&aws.ec2, &aws.cfg, kind).await,
             Backend::Mock => crate::resources::ResourceList {
                 kind,
                 rows: crate::resources::mock(kind),
@@ -243,7 +251,7 @@ impl Inventory {
         ids: &[String],
     ) -> (HashMap<String, Utilization>, Vec<Warning>) {
         match &self.backend {
-            Backend::Aws { cw, .. } => utilization_aws(cw, ids).await,
+            Backend::Aws(aws) => utilization_aws(&aws.cw, ids).await,
             Backend::Mock => (mock_utilization(ids), Vec::new()),
         }
     }
