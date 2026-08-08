@@ -249,7 +249,7 @@ impl Inventory {
     }
 
     /// Fetches CPU/MEM utilization for the given instances from CloudWatch.
-    /// Best-effort: instances without data simply stay absent from the map
+    /// Best-effort: instances without data stay absent from the map
     /// (the UI shows a placeholder), API failures come back as Warnings.
     pub async fn utilization(
         &self,

@@ -152,7 +152,7 @@ impl ResourceKind {
     }
 
     /// Column titles of the generic table (widths auto-fit to content).
-    /// Kinds whose API exposes no creation time simply have no AGE column.
+    /// Kinds whose API exposes no creation time have no AGE column.
     pub fn columns(self) -> &'static [&'static str] {
         match self {
             ResourceKind::Instances => &[],
