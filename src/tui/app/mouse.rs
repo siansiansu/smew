@@ -23,14 +23,7 @@ impl Model {
         match self.mode {
             Mode::List => self.mouse_list(me),
             Mode::Session => self.mouse_session(me),
-            Mode::Detail => {
-                let total = if self.view == crate::resources::ResourceKind::Instances {
-                    self.detail_lines().len()
-                } else {
-                    self.res_detail_lines().len()
-                };
-                self.mouse_overlay(me, total);
-            }
+            Mode::Detail => self.mouse_overlay(me, self.detail_content_height()),
             Mode::Help => self.mouse_overlay(me, self.help_lines().len()),
             Mode::Profiles => self.mouse_profiles(me),
             Mode::Confirm => {} // keyboard-only: y / n
@@ -185,7 +178,7 @@ impl Model {
             _ => return,
         };
         for _ in 0..WHEEL_STEP {
-            self.overlay_scroll_key(s, total);
+            self.overlay_scroll_key(s, total, self.page_rows());
         }
     }
 

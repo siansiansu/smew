@@ -7,9 +7,9 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph};
 
-use super::{StateClass, classify_state, hints_line, pad1, refresh_label, state_color};
+use super::{hints_line, pad1, refresh_label};
 use crate::theme;
-use crate::tui::{ConfirmKind, FwdField, Model, age_label, leader_label};
+use crate::tui::{ConfirmKind, FwdField, Model, leader_label};
 use crate::version;
 
 // ---- profile picker ----
@@ -83,242 +83,7 @@ pub(super) fn draw_profiles(m: &Model, f: &mut Frame) {
     );
 }
 
-// ---- detail view ----
-
-/// The full record of the selected instance, scrollable.
-pub(super) fn draw_detail(m: &Model, f: &mut Frame) {
-    scrolled_screen(
-        f,
-        m.detail_lines(),
-        m.overlay_scroll,
-        "s connect · ↑/↓ scroll · esc/d back · q quit",
-    );
-}
-
-/// The key/value record of the selected resource row, scrollable.
-pub(super) fn draw_res_detail(m: &Model, f: &mut Frame) {
-    scrolled_screen(
-        f,
-        m.res_detail_lines(),
-        m.overlay_scroll,
-        "↑/↓ scroll · esc/d back · q quit",
-    );
-}
-
-/// Renders content lines scrolled by `off`, with a fixed hint bar (plus a
-/// line-position indicator when the content overflows) on the bottom row.
-fn scrolled_screen(f: &mut Frame, lines: Vec<Line<'static>>, off: usize, hint: &str) {
-    let area = f.area();
-    if area.height < 2 {
-        return;
-    }
-    let body = Rect::new(area.x, area.y, area.width, area.height - 1);
-    let total = lines.len();
-    let vis = body.height as usize;
-    f.render_widget(Paragraph::new(lines).scroll((off as u16, 0)), body);
-
-    let mut spans = vec![Span::styled(format!(" {hint}"), Style::new().dim())];
-    if total > vis {
-        spans.push(Span::styled(
-            format!("   ({}–{}/{})", off + 1, (off + vis).min(total), total),
-            Style::new().dim(),
-        ));
-    }
-    f.render_widget(
-        Paragraph::new(Line::from(spans)),
-        Rect::new(area.x, area.y + area.height - 1, area.width, 1),
-    );
-}
-
-impl Model {
-    /// The detail screen's content lines (hint bar excluded).
-    pub(crate) fn detail_lines(&self) -> Vec<Line<'static>> {
-        let th = theme::current();
-        let inst = &self.detail;
-        let label = Style::new().fg(th.gray);
-        let value = Style::new().fg(th.value);
-        let accent = Style::new().fg(th.accent);
-        let dash = |s: &str| {
-            if s.is_empty() {
-                "-".to_string()
-            } else {
-                s.to_string()
-            }
-        };
-
-        let mut lines: Vec<Line> = Vec::new();
-        // header: host name + colored state chip
-        let chip_bg = match classify_state(&inst.state) {
-            StateClass::Running => th.chip_running_bg,
-            StateClass::Down => th.chip_down_bg,
-            StateClass::Other => th.chip_other_bg,
-        };
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!(" {} ", inst.name),
-                Style::new()
-                    .fg(th.chip_fg)
-                    .bg(th.sel_bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw(" "),
-            Span::styled(
-                format!(" {} ", inst.state),
-                Style::new()
-                    .fg(th.chip_fg)
-                    .bg(chip_bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]));
-
-        let sec = |lines: &mut Vec<Line>, title: &str| {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(Span::styled(
-                format!("▍ {title}"),
-                Style::new().fg(th.cyan).add_modifier(Modifier::BOLD),
-            )));
-        };
-        let kv = |lines: &mut Vec<Line>, k: &str, v: Vec<Span<'static>>| {
-            let mut spans = vec![Span::styled(format!("  {k:<11} "), label)];
-            spans.extend(v);
-            lines.push(Line::from(spans));
-        };
-
-        sec(&mut lines, "Overview");
-        kv(
-            &mut lines,
-            "Instance",
-            vec![Span::styled(inst.instance_id.clone(), accent)],
-        );
-        kv(
-            &mut lines,
-            "State",
-            vec![Span::styled(
-                inst.state.clone(),
-                Style::new().fg(state_color(&inst.state)),
-            )],
-        );
-        kv(
-            &mut lines,
-            "Type",
-            vec![Span::styled(dash(&inst.instance_type), value)],
-        );
-        kv(
-            &mut lines,
-            "Platform",
-            vec![Span::styled(dash(&inst.platform), value)],
-        );
-        let launched: Vec<Span<'static>> = match inst.launch_time {
-            None => vec![Span::raw("-")],
-            // UTC, matching the --dry-run output.
-            Some(t) => vec![
-                Span::styled(t.format("%Y-%m-%d %H:%M").to_string(), value),
-                Span::styled(format!("  ({} ago)", age_label(inst.launch_time)), label),
-            ],
-        };
-        kv(&mut lines, "Launched", launched);
-
-        sec(&mut lines, "Network");
-        kv(
-            &mut lines,
-            "VPC",
-            vec![Span::styled(dash(&inst.vpc_id), accent)],
-        );
-        kv(
-            &mut lines,
-            "Subnet",
-            vec![Span::styled(dash(&inst.subnet_id), accent)],
-        );
-        kv(&mut lines, "AZ", vec![Span::styled(dash(&inst.az), value)]);
-        kv(
-            &mut lines,
-            "Private IP",
-            vec![Span::styled(dash(&inst.private_ip), value)],
-        );
-        kv(
-            &mut lines,
-            "Public IP",
-            vec![Span::styled(dash(&inst.public_ip), value)],
-        );
-
-        sec(&mut lines, "SSM");
-        match &inst.ssm {
-            Some(ssm) => {
-                let reach = if inst.is_connectable() {
-                    Span::styled("reachable", Style::new().fg(th.green))
-                } else {
-                    Span::styled("not reachable", Style::new().fg(th.red))
-                };
-                kv(&mut lines, "Status", vec![reach]);
-                kv(
-                    &mut lines,
-                    "Agent",
-                    vec![Span::styled(dash(&ssm.agent_version), value)],
-                );
-                kv(
-                    &mut lines,
-                    "Ping",
-                    vec![Span::styled(dash(&ssm.ping_status), value)],
-                );
-            }
-            None => kv(
-                &mut lines,
-                "Status",
-                vec![Span::styled("no SSM info", Style::new().fg(th.red))],
-            ),
-        }
-
-        sec(&mut lines, "Security Groups");
-        if inst.security_groups.is_empty() {
-            lines.push(Line::from(Span::styled("  -", label)));
-        }
-        for sg in &inst.security_groups {
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {:<22} ", sg.id), accent),
-                Span::styled(dash(&sg.name), value),
-            ]));
-        }
-
-        sec(&mut lines, "Tags");
-        if inst.tags.is_empty() {
-            lines.push(Line::from(Span::styled("  -", label)));
-        }
-        for (k, v) in &inst.tags {
-            lines.push(Line::from(vec![
-                Span::styled(format!("  {k:<24} "), label),
-                Span::styled(dash(v), value),
-            ]));
-        }
-
-        sec(&mut lines, "SSH / scp (via SSM)");
-        lines.push(Line::from(Span::styled(
-            format!("  ssh <user>@{}", inst.instance_id),
-            accent,
-        )));
-        lines.push(Line::from(Span::styled(
-            format!("  scp ./file <user>@{}:/tmp/", inst.instance_id),
-            accent,
-        )));
-        lines.push(Line::from(Span::styled(
-            "  run `smew --ssh-config` once · user = ec2-user / ubuntu / …",
-            Style::new().dim(),
-        )));
-
-        lines
-    }
-}
-
-// ---- help view ----
-
-/// The full keybinding overlay (opened with ?), grouped and scrollable.
-pub(super) fn draw_help(m: &Model, f: &mut Frame) {
-    scrolled_screen(
-        f,
-        m.help_lines(),
-        m.overlay_scroll,
-        "esc / ? back · ↑/↓ scroll · q quit",
-    );
-}
+// ---- help content ----
 
 impl Model {
     /// The help screen's content lines (hint bar excluded).
@@ -670,18 +435,8 @@ mod tests {
     use crate::tui::{ConfirmKind, Mode, test_model};
 
     #[test]
-    fn renders_detail_help_confirm() {
+    fn renders_help_and_confirm() {
         let mut m = listed_model();
-        m.detail = m.all[0].clone();
-        m.mode = Mode::Detail;
-        let s = render(&m, 100, 40);
-        assert!(s.contains("▍ Overview"), "detail sections missing:\n{s}");
-        assert!(s.contains("reachable"), "ssm status missing:\n{s}");
-        assert!(
-            s.contains("ssh <user>@i-0aaa1111"),
-            "ssh hint missing:\n{s}"
-        );
-
         m.mode = Mode::Help;
         let s = render(&m, 100, 60);
         assert!(s.contains("— keys"), "help title missing:\n{s}");
@@ -702,30 +457,16 @@ mod tests {
     }
 
     #[test]
-    fn detail_and_help_scroll() {
+    fn help_scrolls_inside_the_frame() {
         let mut m = listed_model();
-        m.detail = m.all[0].clone();
-        m.mode = Mode::Detail;
-        m.overlay_scroll = 5;
-        let s = render(&m, 100, 12);
-        assert!(
-            !s.contains("▍ Overview"),
-            "scrolled-off section shown:\n{s}"
-        );
-        assert!(s.contains("s connect"), "hint bar must stay fixed:\n{s}");
-        assert!(s.contains("(6–"), "scroll position indicator missing:\n{s}");
-
         m.mode = Mode::Help;
         m.overlay_scroll = 4;
-        let s = render(&m, 100, 20);
+        let s = render(&m, 100, 22);
         assert!(
             !s.contains("▍ Navigate"),
             "scrolled-off section shown:\n{s}"
         );
-        assert!(
-            s.contains("▍ Resource views"),
-            "section header missing:\n{s}"
-        );
+        assert!(s.contains("▍ Commands"), "section header missing:\n{s}");
     }
 
     #[test]

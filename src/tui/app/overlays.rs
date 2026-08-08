@@ -108,14 +108,7 @@ impl Model {
                 let t = vec![self.detail.clone()];
                 self.start_session(t);
             }
-            _ => {
-                let total = if is_instance {
-                    self.detail_lines().len()
-                } else {
-                    self.res_detail_lines().len()
-                };
-                self.overlay_scroll_key(s, total);
-            }
+            _ => self.overlay_scroll_key(s, self.detail_content_height(), self.page_rows()),
         }
     }
 
@@ -132,14 +125,14 @@ impl Model {
                     Mode::Session
                 };
             }
-            _ => self.overlay_scroll_key(s, self.help_lines().len()),
+            _ => self.overlay_scroll_key(s, self.help_lines().len(), self.page_rows()),
         }
     }
 
-    /// Scroll keys shared by the detail and help screens. `total` is the
-    /// content line count; one screen row is reserved for the hint bar.
-    pub(super) fn overlay_scroll_key(&mut self, s: &str, total: usize) {
-        let vis = (self.height as usize).saturating_sub(1).max(1);
+    /// Scroll keys shared by the describe and help pages. `total` is the
+    /// content height, `vis` the rows visible inside the framed panel.
+    pub(super) fn overlay_scroll_key(&mut self, s: &str, total: usize, vis: usize) {
+        let vis = vis.max(1);
         let max = total.saturating_sub(vis);
         let page = vis.saturating_sub(1);
         let cur = self.overlay_scroll;

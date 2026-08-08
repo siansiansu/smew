@@ -58,6 +58,11 @@ pub struct Instance {
     pub private_ip: String,
     pub public_ip: String,
     pub launch_time: Option<DateTime<Utc>>,
+    pub image_id: String,
+    /// Root device name + type, e.g. "/dev/xvda (ebs)".
+    pub root_device: String,
+    /// Attached block devices: (device name, volume id).
+    pub volumes: Vec<(String, String)>,
     pub tags: BTreeMap<String, String>,
     pub ssm: Option<SsmStatus>,
 }
@@ -551,6 +556,13 @@ fn mock_instances() -> Vec<Instance> {
             name: if name.is_empty() { id } else { name }.to_string(),
             state: "running".to_string(),
             platform: "Linux/UNIX".to_string(),
+            image_id: "ami-0base1".to_string(),
+            root_device: "/dev/xvda (ebs)".to_string(),
+            // a plausible per-host root volume id derived from the instance id
+            volumes: vec![(
+                "/dev/xvda".to_string(),
+                format!("vol-{}", &id[2..10.min(id.len())]),
+            )],
             az: az.to_string(),
             vpc_id: "vpc-0dev00000000dev0".to_string(),
             subnet_id: format!(
@@ -667,9 +679,29 @@ fn mock_instances() -> Vec<Instance> {
             match name {
                 "windows-01" | "windows-sql-01" => {
                     inst.platform = "Windows".to_string();
+                    inst.image_id = "ami-0win4".to_string();
+                    inst.root_device = "/dev/sda1 (ebs)".to_string();
+                    inst.volumes = vec![("/dev/sda1".to_string(), "vol-0win01".to_string())];
                 }
                 "gpu-train-01" => {
                     inst.public_ip = "203.0.113.55".to_string();
+                    // extra data volume, matching the vol view fixtures
+                    inst.volumes
+                        .push(("/dev/xvdf".to_string(), "vol-0feed5".to_string()));
+                }
+                "db-primary" => {
+                    inst.volumes.extend([
+                        ("/dev/xvdf".to_string(), "vol-0ccc3".to_string()),
+                        ("/dev/xvdg".to_string(), "vol-0ccc4".to_string()),
+                    ]);
+                }
+                "kafka-01" => {
+                    inst.volumes
+                        .push(("/dev/xvdf".to_string(), "vol-0cafe1".to_string()));
+                }
+                "kafka-02" => {
+                    inst.volumes
+                        .push(("/dev/xvdf".to_string(), "vol-0cafe2".to_string()));
                 }
                 _ => {}
             }
@@ -721,6 +753,22 @@ impl From<&aws_sdk_ec2::types::Instance> for Instance {
             launch_time: ec2_inst
                 .launch_time()
                 .and_then(|t| DateTime::from_timestamp(t.secs(), t.subsec_nanos())),
+            image_id: ec2_inst.image_id().unwrap_or_default().to_string(),
+            root_device: match (ec2_inst.root_device_name(), ec2_inst.root_device_type()) {
+                (Some(n), Some(t)) => format!("{n} ({})", t.as_str()),
+                (Some(n), None) => n.to_string(),
+                _ => String::new(),
+            },
+            volumes: ec2_inst
+                .block_device_mappings()
+                .iter()
+                .filter_map(|b| {
+                    Some((
+                        b.device_name()?.to_string(),
+                        b.ebs()?.volume_id()?.to_string(),
+                    ))
+                })
+                .collect(),
             ..Default::default()
         };
         if let Some(state) = ec2_inst.state() {

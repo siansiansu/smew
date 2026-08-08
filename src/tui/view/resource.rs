@@ -6,7 +6,6 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
 
 use crate::theme;
 use crate::tui::{LIST_ROW_H, Model};
@@ -85,49 +84,6 @@ pub(super) fn draw_res_table(m: &Model, dst: &mut Buffer, area: Rect) {
     }
 }
 
-impl Model {
-    /// The detail overlay's content for a non-instance resource: the row's
-    /// grouped record, one "▍ Section" block per detail section.
-    pub(crate) fn res_detail_lines(&self) -> Vec<Line<'static>> {
-        let th = theme::current();
-        let row = &self.res_detail;
-        let mut lines = vec![Line::from(vec![Span::styled(
-            format!(" {} ", row.cells.first().cloned().unwrap_or_default()),
-            Style::new()
-                .fg(th.chip_fg)
-                .bg(th.sel_bg)
-                .add_modifier(Modifier::BOLD),
-        )])];
-        for (title, rows) in &row.detail {
-            let key_w = rows
-                .iter()
-                .map(|(k, _)| k.chars().count())
-                .max()
-                .unwrap_or(0)
-                .max(8);
-            lines.push(Line::raw(""));
-            lines.push(Line::from(Span::styled(
-                format!("▍ {title}"),
-                Style::new().fg(th.cyan).add_modifier(Modifier::BOLD),
-            )));
-            for (k, v) in rows {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("  {k:<key_w$} "), Style::new().fg(th.gray)),
-                    Span::styled(
-                        if v.is_empty() {
-                            "-".to_string()
-                        } else {
-                            v.clone()
-                        },
-                        Style::new().fg(th.value),
-                    ),
-                ]));
-            }
-        }
-        lines
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::test_util::render;
@@ -163,15 +119,5 @@ mod tests {
         let s = render(&m, 140, 40);
         assert!(s.contains("FREE-IPS"), "header missing:\n{s}");
         assert!(s.contains("dev-a-crowded"), "row missing:\n{s}");
-    }
-
-    #[test]
-    fn renders_resource_detail() {
-        let mut m = resource_model(ResourceKind::Eips);
-        m.res_detail = m.res_filtered[0].clone();
-        m.mode = crate::tui::Mode::Detail;
-        let s = render(&m, 120, 40);
-        assert!(s.contains("PUBLIC-IP"), "detail key missing:\n{s}");
-        assert!(s.contains("203.0.113"), "detail value missing:\n{s}");
     }
 }

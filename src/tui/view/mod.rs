@@ -2,6 +2,7 @@
 //! Colors come from the active theme (crate::theme); the defaults are fixed
 //! 256-color indexes.
 
+mod detail;
 mod list;
 mod overlays;
 mod resource;
@@ -23,7 +24,7 @@ pub(crate) fn draw(m: &Model, f: &mut Frame) {
         Mode::Profiles => overlays::draw_profiles(m, f),
         Mode::Session => session::draw_session(m, f),
         _ if m.loading => draw_loading(f),
-        Mode::Help => overlays::draw_help(m, f),
+        Mode::Help => detail::draw_help_page(m, f),
         Mode::Confirm => {
             // The dialog floats centered over the screen it interrupts.
             match m.confirm_action {
@@ -36,10 +37,7 @@ pub(crate) fn draw(m: &Model, f: &mut Frame) {
             list::draw_list(m, f);
             overlays::draw_forward(m, f);
         }
-        Mode::Detail if m.view != crate::resources::ResourceKind::Instances => {
-            overlays::draw_res_detail(m, f)
-        }
-        Mode::Detail => overlays::draw_detail(m, f),
+        Mode::Detail => detail::draw_detail_page(m, f),
         Mode::List => list::draw_list(m, f),
     }
 }

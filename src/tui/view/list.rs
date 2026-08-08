@@ -147,6 +147,18 @@ const RES_MENU: [(&str, &str); 10] = [
     ("q", "quit"),
 ];
 
+/// The describe page's menu (instances also get `s`, harmless elsewhere).
+const DETAIL_MENU: [(&str, &str); 5] = [
+    ("↑↓", "scroll"),
+    ("s", "connect"),
+    ("esc / d", "back"),
+    ("?", "help"),
+    ("q", "quit"),
+];
+
+/// The help page's menu.
+const HELP_MENU: [(&str, &str); 3] = [("↑↓", "scroll"), ("esc / ?", "back"), ("q", "quit")];
+
 pub(super) fn draw_list(m: &Model, f: &mut Frame) {
     let area = f.area();
     if area.height < 5 || area.width < 10 {
@@ -283,16 +295,18 @@ fn draw_panel(m: &Model, f: &mut Frame, area: Rect) {
 /// The k9s-style top panel: a `Label: value` info block on the left, the
 /// keymap menu in the middle, and the logo on the right. The menu and logo
 /// drop out on narrow terminals; the info block always renders (clipped).
-fn draw_header(m: &Model, f: &mut Frame, area: Rect) {
+/// Shared by the list, describe and help pages (the menu follows the mode).
+pub(super) fn draw_header(m: &Model, f: &mut Frame, area: Rect) {
     if area.height == 0 {
         return;
     }
     let info = info_lines(m);
     let info_w = info.iter().map(Line::width).max().unwrap_or(0) as u16 + 1; // +1 for pad1
-    let menu = if m.view == crate::resources::ResourceKind::Instances {
-        menu_lines(&LIST_MENU)
-    } else {
-        menu_lines(&RES_MENU)
+    let menu = match m.mode {
+        crate::tui::Mode::Detail => menu_lines(&DETAIL_MENU),
+        crate::tui::Mode::Help => menu_lines(&HELP_MENU),
+        _ if m.view == crate::resources::ResourceKind::Instances => menu_lines(&LIST_MENU),
+        _ => menu_lines(&RES_MENU),
     };
     let menu_w = menu.iter().map(Line::width).max().unwrap_or(0) as u16;
 
