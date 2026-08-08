@@ -15,10 +15,11 @@ inventory: the SSM column reads `Connected` for hosts reachable right now,
 and the top panel shows who you are (account id + role/user from STS)
 alongside the region and instance counts.
 
-`--dev` runs the whole TUI against a built-in 30-host mock fleet (every
-lifecycle state, lost/ancient SSM agents, a second VPC, orphaned volumes,
-idle EIPs…): no credentials, no network. "Sessions" open your local shell
-in the panes, so filtering, resource views, multi-pane broadcast,
+`--dev` runs the whole TUI against a built-in mock account — a 30-host
+fleet plus fixtures for every resource view (orphaned volumes, idle EIPs, a
+filling SQS DLQ, an under-capacity ASG, a rolled-back stack…): no
+credentials, no network. "Sessions" open your local shell in the panes, so
+filtering, resource views, describe dashboards, multi-pane broadcast,
 port-forward forms and every keybinding can be tried (or demoed) offline.
 Combine with `--dry-run` to print the mock table.
 
@@ -39,16 +40,21 @@ Combine with `--dry-run` to print the mock table.
 Press `:` for a command prompt with inline completion (`Tab`
 accepts, `↑` recalls the last command):
 
-- `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip` `:ami` switch the
-  table to EBS volumes, snapshots, security groups, VPCs, subnets, network
-  interfaces, Elastic IPs or AMIs — the usual AWS aliases work too
-  (`:ebs`, `:sub`, `:images`, …); `:ec2` returns to instances
-- in these views the same navigation and `/` filter apply; `d` opens a
-  key/value detail; things that cost money for nothing — unattached
-  volumes, idle EIPs, orphaned ENIs — and subnets close to IP exhaustion
-  are highlighted
-- `Enter` on a **vpc / subnet / sg** row drills down: the instances view
-  opens pre-filtered to that resource; `Esc` goes back to where you were
+- `:` + an AWS abbreviation switches the table to another resource view —
+  the EC2 family (`:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip`
+  `:ami`) and the rest of the account: `:s3` `:lambda` `:asg` `:rds` `:ddb`
+  `:elb` `:sqs` `:sns` `:ecs` `:eks` `:cfn`. The usual AWS aliases work too
+  (`:ebs`, `:fn`, `:lb`, `:stacks`, …); `:ec2` returns to instances and `?`
+  lists every view by category
+- in these views the same navigation and `/` filter apply; things that cost
+  money for nothing — unattached volumes, idle EIPs, orphaned ENIs — and
+  trouble — subnets near IP exhaustion, filling DLQs, under-capacity ASGs,
+  rolled-back stacks — are highlighted
+- `Enter` (or `d`) opens the **describe dashboard**: bordered panels
+  grouped like the AWS console (Details / Networking / Security / Storage /
+  Monitoring / Tags), sized to fit one screen instead of one long column
+- `Enter` on a **vpc / subnet / sg** row drills down instead: the instances
+  view opens pre-filtered to that resource; `Esc` goes back to where you were
 - `:profile <name>` (fuzzy-matched) or `:ctx` switches AWS account;
   `:help` and `:q` do what they say
 

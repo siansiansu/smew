@@ -3,10 +3,10 @@ layout: home
 
 hero:
   name: smew
-  text: AWS SSM sessions, multiplexed.
+  text: Explore AWS from the terminal.
   tagline: >-
-    Browse EC2 and its resources; shell in over SSM with split panes and
-    broadcast. No server, no inbound port 22 — access
+    Browse EC2, S3, Lambda, RDS and more; shell in over SSM with split
+    panes and broadcast. No server, no inbound port 22 — access
     control and audit stay on AWS.
   image:
     src: /logo.svg
@@ -29,15 +29,16 @@ features:
   - icon: ⌨️
     title: Command mode
     details: >-
-      A `:` prompt with inline completion — :vol :sg :vpc :eni
+      A `:` prompt with inline completion — :s3 :lambda :rds :sg :vpc
       switch resource views; :ctx / :profile switch AWS accounts with fuzzy
       matching.
   - icon: 🧭
-    title: Resource views
+    title: Resource explorer
     details: >-
-      Volumes, snapshots, security groups, VPCs, subnets, ENIs, EIPs and
-      AMIs in the same table. Enter drills from a vpc/subnet/sg into its
-      instances; orphaned and near-exhausted resources light up.
+      20 views across the EC2 family, S3, Lambda, RDS, DynamoDB, load
+      balancers, ASGs, SQS, SNS, ECS, EKS and CloudFormation. Enter opens a
+      console-style panel dashboard; drill from a vpc/subnet/sg into its
+      instances; waste and trouble light up.
   - icon: 🪟
     title: Multi-pane sessions
     details: >-

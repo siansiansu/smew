@@ -17,7 +17,7 @@ include = [
     "/README.md",
     "/LICENSE",
 ]
-description = "Terminal UI for AWS: browse EC2 and its resources, shell in over SSM with split panes and broadcast — no bastion, no port 22"
+description = "Terminal UI to explore AWS resources — EC2, S3, Lambda, RDS and more — and shell in over SSM with split panes and broadcast; no bastion, no port 22"
 license = "MIT"
 repository = "https://github.com/siansiansu/smew"
 homepage = "https://siansiansu.github.io/smew/"

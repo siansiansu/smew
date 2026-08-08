@@ -7,7 +7,7 @@ use smew::inventory::Instance;
 use smew::session::{PluginDriver, SshOptions};
 use smew::{aws, config, inventory, theme, tui, version};
 
-/// Local AWS SSM connection tool: interactive inventory browser + multiplexing.
+/// Terminal UI to explore AWS resources and open SSM sessions (multiplexed).
 #[derive(Parser, Debug)]
 #[command(name = "smew", disable_version_flag = true)]
 struct Cli {

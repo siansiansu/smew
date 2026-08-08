@@ -21,14 +21,29 @@ and configured leader key.
 | --- | --- |
 | `:` | open the command prompt (inline completion) |
 | `Tab` | accept the suggestion; `↑` recalls the last command / cycles |
-| `:ec2` `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip` `:ami` | switch resource view (AWS aliases work: `ebs`, `sub`, `images`, …) |
+| `:<view>` | switch resource view — see the table below (AWS aliases work: `ebs`, `fn`, `lb`, `sub`, …) |
 | `:profile [name]` / `:ctx` | switch AWS profile — fuzzy-matched with a name, the picker without |
 | `:help` / `:q` | help / quit |
 | `Esc` | close the prompt, nothing happens |
 
+### Resource views, by AWS category
+
+| Category | Views |
+| --- | --- |
+| Compute | `:ec2` `:ami` `:lambda` `:asg` |
+| Storage | `:vol` `:snap` `:s3` |
+| Database | `:rds` `:ddb` |
+| Networking & Content Delivery | `:vpc` `:subnet` `:eni` `:eip` `:elb` |
+| Security, Identity & Compliance | `:sg` |
+| Application Integration | `:sqs` `:sns` |
+| Containers | `:ecs` `:eks` |
+| Management & Governance | `:cfn` |
+
 In a resource view: `Enter` on a vpc / subnet / sg drills into its
 instances (`Esc` there goes back, cursor restored); `Enter` elsewhere and
-`d` everywhere open a key/value detail; `Esc` returns to `:ec2`.
+`d` everywhere open the describe dashboard — bordered panels grouped the
+way the AWS console groups things (Details / Networking / Security /
+Storage / Tags) so most records fit one screen; `Esc` returns to `:ec2`.
 
 ## Filter & sort
 

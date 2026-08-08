@@ -5,9 +5,10 @@
 <h1 align="center">smew</h1>
 
 <p align="center">
-A terminal UI for AWS: browse EC2 and its resources, and open SSM shell
-or port-forwarding sessions with split panes and broadcast.
-No server, no inbound port 22 — access control and audit stay on AWS.
+A terminal UI to explore AWS resources — EC2, S3, Lambda, RDS and more —
+and open SSM shell or port-forwarding sessions with split panes and
+broadcast. No server, no inbound port 22 — access control and audit stay
+on AWS.
 </p>
 
 <p align="center">
@@ -22,10 +23,17 @@ No server, no inbound port 22 — access control and audit stay on AWS.
 - **Inventory browser** — a framed, information-dense table: EC2 detail, live SSM
   reachability, opt-in %CPU/%MEM, caller identity in the header, sorting,
   filtering, vim-style navigation
-- **Resource views** — `:vol` `:snap` `:sg` `:vpc` `:subnet` `:eni` `:eip`
-  `:ami` switch the table to the rest of the EC2 family; `Enter` on a
-  vpc / subnet / sg drills into its instances; orphaned volumes, idle EIPs
-  and subnets near IP exhaustion light up
+- **Resource explorer** — `:` + an AWS abbreviation switches the table to
+  20 resource views across the EC2 family (`:vol` `:snap` `:sg` `:vpc`
+  `:subnet` `:eni` `:eip` `:ami`) and beyond: `:s3` `:lambda` `:asg` `:rds`
+  `:ddb` `:elb` `:sqs` `:sns` `:ecs` `:eks` `:cfn`; `Enter` on a
+  vpc / subnet / sg drills into its instances; waste and trouble light up —
+  orphaned volumes, idle EIPs, filling DLQs, under-capacity ASGs, stuck
+  stacks
+- **Describe dashboards** — `Enter` on any resource opens a panel dashboard
+  grouped the way the AWS console groups things (Details / Networking /
+  Security / Storage / Monitoring / Tags) instead of one long scrolling
+  column
 - **Command mode** — a `:` prompt with inline completion; switch
   AWS profiles with `:ctx` / `:profile <name>` (fuzzy) or the
   type-to-filter fuzzy picker
