@@ -1,7 +1,7 @@
 [package]
 name = "smew"
 # The version shown in the UI title bar and by --version. Bump when releasing.
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 # Verified with `cargo +1.88 check --all-targets` (edition 2024 needs ≥1.85;
 # the AWS SDK / ratatui declare 1.88).
