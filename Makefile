@@ -12,6 +12,7 @@ help:
 	@echo "  docker-run    Run TUI in docker"
 	@echo "  install       Install smew to ~/.cargo/bin via 'cargo install'"
 	@echo "  uninstall     Remove smew installed via 'cargo install'"
+	@echo "  demo          Re-record docs/public/demo.gif via vhs (needs vhs, --dev)"
 
 build:
 	cargo build --release
@@ -50,4 +51,9 @@ install:
 uninstall:
 	cargo uninstall smew
 
-.PHONY: help build test fmt lint check dev docker-build docker-run install uninstall
+# Re-records the README/docs demo GIF against the mock fleet (--dev).
+# Requires `vhs` (brew install vhs); PATH must include the built binary.
+demo: build
+	PATH="$$(pwd)/target/release:$$PATH" vhs docs/demo.tape
+
+.PHONY: help build test fmt lint check dev docker-build docker-run install uninstall demo

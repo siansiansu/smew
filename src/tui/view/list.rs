@@ -17,7 +17,7 @@ const MARK_ONLINE: &str = "Connected"; // reachable via SSM
 const MARK_OFFLINE: &str = "-"; // not reachable
 // k9s marks rows with color, not emoji — double-width glyphs misalign in
 // some terminals.
-const MARK_SELECTED: &str = "*"; // space-marked for multi-open
+const MARK_SELECTED: &str = "*"; // space-marked as a run-command target
 const MARK_NONE: &str = " ";
 
 const NAME_COL: usize = 3; // index of the NAME column
@@ -32,7 +32,7 @@ pub(crate) struct Column {
 
 const BASE_COLUMNS: [(&str, usize); 13] = [
     ("#", 5),   // row number (serial)
-    ("", 3),    // multi-open mark (✅)
+    ("", 3),    // run-command mark (✅)
     ("SSM", 9), // fits "Connected"
     ("NAME", 34),
     ("INSTANCE-ID", 20),
@@ -660,7 +660,7 @@ fn draw_table(m: &Model, dst: &mut Buffer, area: Rect) {
             let cell_style = match *ci {
                 CPU_COL => pct_style(u.cpu, row_style),
                 MEM_COL => pct_style(u.mem, row_style),
-                // the multi-open mark keeps its color on the selected row
+                // the run-command mark keeps its color on the selected row
                 1 => row_style.fg(th.cyan).add_modifier(Modifier::BOLD),
                 _ if selected => row_style,
                 2 if inst.is_connectable() => Style::new().fg(th.green),

@@ -57,6 +57,10 @@ features:
       every session lands in CloudTrail.
 ---
 
+<p align="center">
+  <img src="/demo.gif" alt="smew demo: browsing instances, filtering, switching resource views, the describe dashboard, and an SSM session" width="800">
+</p>
+
 ## Install
 
 ::: code-group

@@ -18,6 +18,14 @@ port 22; access control and audit stay on AWS.
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
+<p align="center">
+  <img src="./docs/public/demo.gif" alt="smew demo: browsing instances, filtering, switching resource views, the describe dashboard, and an SSM session" width="800">
+</p>
+
+<p align="center">
+  <sub>Recorded against <code>smew --dev</code> (the built-in mock fleet — no AWS account needed).</sub>
+</p>
+
 ---
 
 ## Documentation

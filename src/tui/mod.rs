@@ -1,5 +1,5 @@
 //! The terminal frontend: a filterable, sortable instance table
-//! with a profile picker, detail view, and a multi-pane session view.
+//! with a profile picker, detail view, and a single-pane session view.
 //!
 //! Architecture: a single Msg channel drained by the UI thread (`app::run`).
 //! Input, ticks, AWS calls and pane output all land here as messages;
