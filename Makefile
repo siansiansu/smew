@@ -1,5 +1,18 @@
 # smew (version in Cargo.toml).
 
+help:
+	@echo "Available targets:"
+	@echo "  build         Build release binary"
+	@echo "  test          Run tests"
+	@echo "  fmt           Format code"
+	@echo "  lint          Run clippy lints"
+	@echo "  check         Full pre-commit gate: lint, test, fmt --check"
+	@echo "  dev           Run TUI against built-in mock account"
+	@echo "  docker-build  Build docker image"
+	@echo "  docker-run    Run TUI in docker"
+	@echo "  install       Install smew to ~/.cargo/bin via 'cargo install'"
+	@echo "  uninstall     Remove smew installed via 'cargo install'"
+
 build:
 	cargo build --release
 
@@ -31,4 +44,10 @@ docker-run:
 		-e AWS_PROFILE -e AWS_REGION \
 		smew
 
-.PHONY: build test fmt lint check dev docker-build docker-run
+install:
+	cargo install --path .
+
+uninstall:
+	cargo uninstall smew
+
+.PHONY: help build test fmt lint check dev docker-build docker-run install uninstall
