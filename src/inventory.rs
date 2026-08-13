@@ -196,6 +196,81 @@ impl Inventory {
             .map_err(|e| aws_err(&e))
     }
 
+    /// Dispatches a shell script to the instances via ssm:SendCommand
+    /// (AWS-RunShellScript; each line is one array element) and returns the
+    /// command id to poll invocations with. Dev mode returns a fake id.
+    pub async fn run_command(&self, ids: &[String], lines: &[String]) -> Result<String, String> {
+        let Backend::Aws(aws) = &self.backend else {
+            return Ok("dev-command-id".to_string());
+        };
+        let out = aws
+            .ssm
+            .send_command()
+            .set_instance_ids(Some(ids.to_vec()))
+            .document_name("AWS-RunShellScript")
+            .parameters("commands", lines.to_vec())
+            .send()
+            .await
+            .map_err(|e| aws_err(&e))?;
+        out.command()
+            .and_then(|c| c.command_id())
+            .map(str::to_string)
+            .ok_or_else(|| "ssm:SendCommand returned no command id".to_string())
+    }
+
+    /// One instance's status + output for a dispatched command
+    /// (ssm:GetCommandInvocation). Returns (status, combined output);
+    /// status is Pending/InProgress/Success/Failed/…, mapped verbatim from
+    /// the API. An invocation that does not exist yet (SendCommand is
+    /// eventually consistent) comes back as Pending rather than an error.
+    /// Dev mode fakes a successful echo run.
+    pub async fn command_invocation(
+        &self,
+        command_id: &str,
+        instance_id: &str,
+    ) -> Result<(String, String), String> {
+        let Backend::Aws(aws) = &self.backend else {
+            return Ok((
+                "Success".to_string(),
+                format!("[dev] pretended to run on {instance_id}\n"),
+            ));
+        };
+        let out = match aws
+            .ssm
+            .get_command_invocation()
+            .command_id(command_id)
+            .instance_id(instance_id)
+            .send()
+            .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                let msg = aws_err(&e);
+                if msg.contains("InvocationDoesNotExist") {
+                    return Ok(("Pending".to_string(), String::new()));
+                }
+                return Err(msg);
+            }
+        };
+        let status = out
+            .status()
+            .map(|s| s.as_str().to_string())
+            .unwrap_or_else(|| "Pending".to_string());
+        let mut output = out
+            .standard_output_content()
+            .unwrap_or_default()
+            .to_string();
+        let err = out.standard_error_content().unwrap_or_default();
+        if !err.is_empty() {
+            if !output.is_empty() && !output.ends_with('\n') {
+                output.push('\n');
+            }
+            output.push_str("[stderr] ");
+            output.push_str(err);
+        }
+        Ok((status, output))
+    }
+
     /// Reads the published latest version from an SSM Parameter Store
     /// parameter (used for the update check). Returns "" if unset/empty.
     pub async fn latest_version(&self, param: &str) -> Result<String, String> {

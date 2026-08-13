@@ -75,8 +75,8 @@ pub fn run(opts: Options) -> std::io::Result<()> {
         }
     };
 
-    // End any live SSM sessions before leaving the alt screen.
-    for p in &model.panes {
+    // End any live SSM session before leaving the alt screen.
+    if let Some(p) = &model.pane {
         p.close();
     }
     if model.mouse {

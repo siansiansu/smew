@@ -2,14 +2,11 @@
 
 ## SSM shell (`s`)
 
-`s` on a `Connected` host opens an interactive shell through SSM. No
-inbound ports, no key management; the session is logged in CloudTrail
-like any other API call.
+`s` on a `Connected` host opens an interactive shell through SSM — one
+full-screen session, k9s-style. No inbound ports, no key management; the
+session is logged in CloudTrail like any other API call.
 
-Mark hosts with `Space` first and `s` opens all of them as tiled panes in
-one session. Each pane is its own SSM session on its own PTY.
-
-Under the hood the pane runs `smew ssm-session`, which calls
+Under the hood the session runs `smew ssm-session`, which calls
 `ssm:StartSession` and hands the channel to `session-manager-plugin` —
 the aws CLI is not involved.
 
@@ -27,27 +24,31 @@ the SSM agent is missing or broken and you can reach port 22.
 - the host needs `sshd` and the `ec2-instance-connect` package
   (preinstalled on Amazon Linux and Ubuntu AMIs)
 
-## Panes, broadcast, layouts
+## Inside a session
 
-Inside a session the keyboard belongs to the remote shell. The leader key
-(default `Ctrl+b`, configurable) prefixes pane commands:
+The keyboard belongs to the remote shell. The leader key (default
+`Ctrl+b`, configurable) prefixes session commands:
 
 | Leader + | Action |
 | --- | --- |
-| `h` `l` `j` `k` / arrows | move focus between panes |
-| `space` | toggle the focused pane in the broadcast group (≥2 members broadcasts 🔊) |
-| `b` | broadcast to all panes / clear the group |
-| `v` | cycle layout: columns → rows → grid |
-| `z` | zoom the focused pane full-screen |
-| `[` | scroll the pane's history; `q` / `Esc` / `]` exits |
-| `a` | add a pane (pick another host from the list) |
-| `x` | close the focused pane |
-| `d` | close the whole session (confirms) |
+| `[` | scroll the session's history; `q` / `Esc` / `]` exits |
+| `x` / `d` | close the session (confirms) |
 | leader twice | send a literal leader key through |
 
-With broadcast on, keystrokes go to every grouped pane: fleet-wide
-commands with nothing installed server-side. Typing `exit` in a shell
-closes that pane; the last pane closing returns you to the list.
+Typing `exit` in the shell ends the session and returns you to the list.
+
+## Run a command on many hosts
+
+For "run this on several machines at once" you don't need interactive
+shells: mark hosts with `Space`, press `x`, type the script (multi-line —
+`Enter` adds a line, pasting a script works) and send it with `Ctrl+s`.
+
+The script goes out through [Run Command](https://docs.aws.amazon.com/systems-manager/latest/userguide/run-command.html)
+(`ssm:SendCommand`, `AWS-RunShellScript`), and the results page polls each
+host until it finishes, showing per-host status and output. `x` there
+reopens the editor with the same script and targets for a quick re-run.
+Nothing is installed server-side; every invocation is logged in
+CloudTrail.
 
 ## Port forwarding (`F`)
 
@@ -58,8 +59,8 @@ closes that pane; the last pane closing returns you to the list.
   endpoint, an internal service
 - **local port** defaults to the remote port
 
-The tunnel runs as a pane in the session, next to your shells; close the
-pane to end it. Example: forward local `15432` to
+The tunnel runs as its own session; close it (leader `x`/`d`) to end the
+forward. Example: forward local `15432` to
 `mydb.xxxx.rds.amazonaws.com:5432` via any host in the VPC, then
 `psql -h 127.0.0.1 -p 15432`.
 

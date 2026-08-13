@@ -14,9 +14,8 @@ default_region: ap-northeast-1
 # Unset defaults to 10s (floor 5s); "0" disables it (manual refresh only).
 refresh_interval: "10s"
 
-# Multiplexer leader (prefix) key inside a split session. Press it, then a
-# command key (h/l focus, b broadcast, x close pane, d close session).
-# Default "ctrl+b".
+# Leader (prefix) key inside a session. Press it, then a command key
+# ([ scrollback, x/d close session, ? help). Default "ctrl+b".
 # Examples: "ctrl+a", "ctrl+ " (ctrl+space).
 session_leader: "ctrl+b"
 

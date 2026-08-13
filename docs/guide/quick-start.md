@@ -18,8 +18,8 @@ alongside the region and instance counts.
 `--dev` runs the whole TUI against a built-in mock account — a 30-host
 fleet plus fixtures for every resource view (orphaned volumes, idle EIPs, a
 filling SQS DLQ, an under-capacity ASG, a rolled-back stack…): no
-credentials, no network. "Sessions" open your local shell in the panes, so
-filtering, resource views, describe dashboards, multi-pane broadcast,
+credentials, no network. "Sessions" open your local shell, run-command
+pretends to succeed, so filtering, resource views, describe dashboards,
 port-forward forms and every keybinding can be tried (or demoed) offline.
 Combine with `--dry-run` to print the mock table.
 
@@ -62,14 +62,20 @@ accepts, `↑` recalls the last command):
 
 ## Connect
 
-- `s` on a host opens an SSM shell — no open ports, works for any
-  `Connected` host.
+- `s` on a host opens a full-screen SSM shell — no open ports, works for
+  any `Connected` host. `exit` (or leader `x`/`d`) ends it.
 - `i` logs in over plain SSH instead: smew pushes a 60-second key via EC2
   Instance Connect, then runs `ssh <user>@<ip>` (public IP preferred). For
   hosts whose port 22 you can reach — no SSM agent required. The login
   user comes from `ssh_user` in the config (default `ec2-user`).
-- `Space` marks multiple hosts, then `s` (or `i`) opens them **as split
-  panes** in one session — a terminal multiplexer over SSM.
+
+## Run a command on many hosts
+
+`Space` marks hosts, `x` opens a multi-line command editor (`Enter` adds
+a line, pasting a script works), `Ctrl+s` sends it via SSM Run Command
+(`AWS-RunShellScript`). The results page polls every host and shows
+per-host status + output; `x` there edits and re-runs, `Esc` goes back.
+With nothing marked, `x` targets the host under the cursor.
 
 ## Port forward
 
@@ -81,23 +87,12 @@ accepts, `↑` recalls the last command):
   an internal service — with no bastion and no open ports
 - **local port** defaults to the same as the remote port
 
-The tunnel runs as a session pane (added to the current session, or a new
-one), so it lives alongside your shells; close the pane to end it. Example:
-forward local `15432` to `mydb.xxxx.rds.amazonaws.com:5432` via a host in
-the VPC, then `psql -h 127.0.0.1 -p 15432` locally.
+The tunnel runs as its own session; close it (leader `x`/`d`) to end it.
+Example: forward local `15432` to `mydb.xxxx.rds.amazonaws.com:5432` via a
+host in the VPC, then `psql -h 127.0.0.1 -p 15432` locally.
 
-Inside a session, press the leader (default `Ctrl+b`), then:
-
-| Key | Action |
-| --- | --- |
-| `space` | toggle the focused pane in the broadcast group (≥2 auto-broadcasts 🔊) |
-| `b` | broadcast to all panes / clear |
-| `v` | cycle layout: columns → rows → grid |
-| `z` | zoom the focused pane |
-| `d` | close the whole session |
-
-Type in a broadcast session and the keystrokes go to every grouped pane —
-fleet-wide commands without any server-side tooling.
+Inside a session, press the leader (default `Ctrl+b`), then `[` for
+scrollback, `x`/`d` to close the session, `?` for help.
 
 Press `?` anywhere for the complete [keybinding reference](/guide/keybindings).
 

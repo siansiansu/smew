@@ -105,7 +105,7 @@ impl Model {
             "ctrl+c" => self.quit = true,
             "esc" | "q" | "d" | "enter" => self.mode = Mode::List,
             "s" if is_instance => {
-                let t = vec![self.detail.clone()];
+                let t = Some(self.detail.clone());
                 self.start_session(t);
             }
             _ => self.overlay_scroll_key(s, self.detail_content_height(), self.page_rows()),
@@ -116,10 +116,10 @@ impl Model {
         match s {
             "ctrl+c" => self.quit = true,
             "esc" | "q" | "?" | "enter" => {
-                // Return to the session when panes are still open — returning
-                // to the list would strand any live session (help is
-                // reachable via leader-?).
-                self.mode = if self.panes.is_empty() {
+                // Return to the session when its pane is still open —
+                // returning to the list would strand a live session (help
+                // is reachable via leader-?).
+                self.mode = if self.pane.is_none() {
                     Mode::List
                 } else {
                     Mode::Session

@@ -1,18 +1,8 @@
-//! Session-view update logic: the leader-prefixed multiplexer commands,
-//! broadcast groups, scroll (copy) mode, pane lifecycle and tiling math.
+//! Session-view update logic: the leader-prefixed commands, scroll (copy)
+//! mode, and the pane lifecycle (one full-screen pane per session).
 
 mod input;
-mod layout;
 mod lifecycle;
-
-use std::sync::Arc;
-
-use crate::session::Pane;
-
-/// Identity key for broadcast-group membership.
-pub(crate) fn pane_key(p: &Arc<Pane>) -> usize {
-    Arc::as_ptr(p) as usize
-}
 
 #[cfg(test)]
 mod test_util {

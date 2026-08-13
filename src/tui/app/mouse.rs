@@ -26,8 +26,10 @@ impl Model {
             Mode::Detail => self.mouse_overlay(me, self.detail_content_height()),
             Mode::Help => self.mouse_overlay(me, self.help_lines().len()),
             Mode::Profiles => self.mouse_profiles(me),
+            Mode::CmdResults => self.mouse_overlay(me, self.cmd_results_height()),
             Mode::Confirm => {} // keyboard-only: y / n
             Mode::Forward => {} // keyboard-only form
+            Mode::RunCmd => {}  // keyboard-only editor
         }
     }
 
@@ -73,15 +75,9 @@ impl Model {
                 self.cursor = idx;
                 self.ensure_cursor_visible();
                 if double {
-                    if self.adding_pane {
-                        self.add_pane_from_list();
-                    } else if let Some(inst) = self
-                        .filtered
-                        .get(idx)
-                        .filter(|i| i.is_connectable())
-                        .cloned()
-                    {
-                        self.start_session(vec![inst]);
+                    let inst = self.filtered.get(idx).cloned();
+                    if inst.as_ref().is_some_and(|i| i.is_connectable()) {
+                        self.start_session(inst);
                     }
                 }
             }
@@ -93,55 +89,20 @@ impl Model {
 
     fn mouse_session(&mut self, me: &MouseEvent) {
         match me.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
-                if let Some(i) = self.pane_at(me.column, me.row) {
-                    self.focus_pane_click(i);
-                }
-            }
-            MouseEventKind::ScrollUp => self.session_wheel(me.column, me.row, 1),
-            MouseEventKind::ScrollDown => self.session_wheel(me.column, me.row, -1),
+            MouseEventKind::ScrollUp => self.session_wheel(me.row, 1),
+            MouseEventKind::ScrollDown => self.session_wheel(me.row, -1),
             _ => {}
         }
     }
 
-    /// The pane under the screen position, if any (row 0 is the header).
-    fn pane_at(&self, x: u16, y: u16) -> Option<usize> {
-        if self.panes.is_empty() || y == 0 {
-            return None;
-        }
-        if self.is_fullscreen() {
-            return Some(self.focus.min(self.panes.len() - 1));
-        }
-        self.pane_rects()
-            .iter()
-            .position(|r| x >= r.x && x < r.x + r.outer_w && y >= r.y && y < r.y + r.outer_h)
-    }
-
-    /// Focuses the clicked pane. Unlike leader focus moves this does not
-    /// enter focus-nav — the next keystrokes should go to the shell.
-    fn focus_pane_click(&mut self, i: usize) {
-        self.focus_nav = false;
-        if i == self.focus {
-            return;
-        }
-        self.focus = i;
-        if self.scrolling {
-            self.scroll_offset = 0; // view the newly focused pane live
-        }
-        if self.zoomed || self.scrolling {
-            self.relayout_session();
-        }
-    }
-
-    /// Wheel over a pane: scroll its scrollback (entering scroll mode), or —
+    /// Wheel over the pane: scroll its scrollback (entering scroll mode), or —
     /// for alternate-screen apps with no scrollback (less, vim, htop…) —
     /// forward arrow keys so the wheel scrolls inside the app (tmux behavior).
-    fn session_wheel(&mut self, x: u16, y: u16, dir: i32) {
-        let Some(i) = self.pane_at(x, y) else {
-            return;
-        };
-        self.focus_pane_click(i);
-        let Some(p) = self.panes.get(self.focus) else {
+    fn session_wheel(&mut self, y: u16, dir: i32) {
+        if y == 0 {
+            return; // row 0 is the header
+        }
+        let Some(p) = self.pane.clone() else {
             return;
         };
         let max = p.scrollback_len();
@@ -277,33 +238,41 @@ mod tests {
         assert_eq!(m.cursor, 2);
     }
 
+    // The wheel over the session pane scrolls its scrollback (entering
+    // scroll mode); the header row is not part of the pane.
     #[test]
-    fn session_click_focuses_and_wheel_scrolls() {
+    fn session_wheel_scrolls_scrollback() {
         let mut m = test_model();
         m.mode = Mode::Session;
-        let argv: Vec<String> = ["sleep", "60"].iter().map(|s| s.to_string()).collect();
+        // a shell that printed plenty → real scrollback exists
+        let argv: Vec<String> = [
+            "sh",
+            "-c",
+            "for i in $(seq 1 200); do echo line-$i; done; sleep 60",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let notify = std::sync::Arc::new(|| {});
-        m.panes = vec![
-            crate::session::Pane::start("a", &argv, 40, 10, notify.clone()).unwrap(),
-            crate::session::Pane::start("b", &argv, 40, 10, notify).unwrap(),
-        ];
-        m.relayout_session();
-
-        // columns layout on a 100-wide screen: pane 1 starts at x=50
-        let down = MouseEventKind::Down(MouseButton::Left);
-        m.handle_mouse(&mouse(down, 75, 5));
-        assert_eq!(m.focus, 1, "click must focus the pane under the pointer");
-        assert!(!m.focus_nav, "a click must not enter focus-nav");
-        m.handle_mouse(&mouse(down, 25, 5));
-        assert_eq!(m.focus, 0);
-        // the header row is not a pane
-        m.focus = 1;
-        m.handle_mouse(&mouse(down, 25, 0));
-        assert_eq!(m.focus, 1, "header clicks must be ignored");
-
-        for p in &m.panes {
-            p.close();
+        let p = crate::session::Pane::start("a", &argv, 40, 10, notify).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        while std::time::Instant::now() < deadline && p.scrollback_len() == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
         }
+        assert!(p.scrollback_len() > 0, "shell never produced scrollback");
+        m.pane = Some(p.clone());
+
+        m.handle_mouse(&mouse(MouseEventKind::ScrollUp, 25, 5));
+        assert!(m.scrolling, "wheel up must enter scroll mode");
+        assert!(m.scroll_offset > 0);
+        m.handle_mouse(&mouse(MouseEventKind::ScrollDown, 25, 5));
+        assert!(m.scroll_offset < 3);
+        // the header row is ignored
+        m.scrolling = false;
+        m.scroll_offset = 0;
+        m.handle_mouse(&mouse(MouseEventKind::ScrollUp, 25, 0));
+        assert!(!m.scrolling, "header wheel must be ignored");
+        p.close();
     }
 
     #[test]

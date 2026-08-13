@@ -6,6 +6,7 @@ mod detail;
 mod list;
 mod overlays;
 mod resource;
+mod runcmd;
 mod session;
 
 pub(crate) use list::{HEADER_H, PROMPT_H};
@@ -38,6 +39,8 @@ pub(crate) fn draw(m: &Model, f: &mut Frame) {
             overlays::draw_forward(m, f);
         }
         Mode::Detail => detail::draw_detail_page(m, f),
+        Mode::RunCmd => runcmd::draw_run_cmd_page(m, f),
+        Mode::CmdResults => runcmd::draw_cmd_results_page(m, f),
         Mode::List => list::draw_list(m, f),
     }
 }
@@ -167,40 +170,70 @@ mod tests {
     use super::test_util::render;
     use crate::tui::{Mode, test_model};
 
+    // The run-command editor and results pages render the script, targets,
+    // status chips and output.
     #[test]
-    fn renders_session_panes() {
+    fn renders_run_cmd_and_results() {
+        let mut m = super::test_util::listed_model();
+        m.mode = Mode::RunCmd;
+        m.cmd_targets = m.all.clone();
+        m.cmd_editor.insert_str("echo hello\nuptime");
+        let s = render(&m, 100, 30);
+        assert!(
+            s.contains("run command on 2 host(s)"),
+            "title missing:\n{s}"
+        );
+        assert!(
+            s.contains("web-prod-01, db-bastion"),
+            "targets missing:\n{s}"
+        );
+        assert!(s.contains("echo hello"), "script line 1 missing:\n{s}");
+        assert!(s.contains("uptime"), "script line 2 missing:\n{s}");
+        assert!(s.contains("ctrl+s = run"), "hint missing:\n{s}");
+
+        m.mode = Mode::CmdResults;
+        let res = |id: &str, name: &str, status: &str, output: &str| crate::tui::CmdResult {
+            instance_id: id.to_string(),
+            name: name.to_string(),
+            status: status.to_string(),
+            output: output.to_string(),
+        };
+        m.cmd_results = vec![
+            res("i-0aaa1111", "web-prod-01", "Success", "hello\n"),
+            res("i-0bbb2222", "db-bastion", "Pending", ""),
+        ];
+        let s = render(&m, 100, 30);
+        assert!(s.contains("1/2 done — polling…"), "progress missing:\n{s}");
+        assert!(s.contains("Success"), "status chip missing:\n{s}");
+        assert!(s.contains("hello"), "output missing:\n{s}");
+        assert!(s.contains("x = edit & re-run"), "hint missing:\n{s}");
+    }
+
+    // The session view: one borderless full-screen pane with its title and
+    // the header line; the which-key popup appears while the leader is
+    // pending.
+    #[test]
+    fn renders_session_pane() {
         let mut m = test_model();
         m.mode = Mode::Session;
         let argv: Vec<String> = ["sh", "-c", "echo pane-marker; sleep 30"]
             .map(String::from)
             .into();
         let notify = std::sync::Arc::new(|| {});
-        let p1 = crate::session::Pane::start("host-a", &argv, 40, 10, notify.clone()).unwrap();
-        let p2 = crate::session::Pane::start("host-b", &argv, 40, 10, notify).unwrap();
-        m.panes = vec![p1, p2];
+        let p = crate::session::Pane::start("host-a", &argv, 40, 10, notify).unwrap();
+        m.pane = Some(p.clone());
         m.relayout_session();
-        // give the shells a moment to print
+        // give the shell a moment to print
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-        while std::time::Instant::now() < deadline
-            && !m.panes[0].contents_text().contains("pane-marker")
-        {
+        while std::time::Instant::now() < deadline && !p.contents_text().contains("pane-marker") {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
         let s = render(&m, 100, 30);
-        assert!(s.contains("▶ host-a"), "focused pane title missing:\n{s}");
-        assert!(s.contains("host-b"), "second pane title missing:\n{s}");
+        assert!(s.contains("▶ host-a"), "pane title missing:\n{s}");
         assert!(s.contains("pane-marker"), "pane content missing:\n{s}");
-        assert!(s.contains("2 pane(s)"), "session header missing:\n{s}");
-        assert!(s.contains("╭"), "pane borders missing:\n{s}");
+        assert!(!s.contains("╭"), "the single pane must be borderless:\n{s}");
 
-        // zoomed: borderless, only the focused pane
-        m.zoomed = true;
-        m.relayout_session();
-        let s = render(&m, 100, 30);
-        assert!(!s.contains("╭"), "zoom must be borderless:\n{s}");
-        assert!(s.contains("▶ host-a"), "zoom title missing:\n{s}");
-
-        // which-key popup while the leader prefix is pending (also over zoom)
+        // which-key popup while the leader prefix is pending
         m.leader_pending = true;
         let s = render(&m, 100, 30);
         assert!(
@@ -209,8 +242,6 @@ mod tests {
         );
         assert!(s.contains("end session"), "leader menu rows missing:\n{s}");
         assert!(s.contains("scrollback"), "leader menu rows missing:\n{s}");
-        for p in &m.panes {
-            p.close();
-        }
+        p.close();
     }
 }

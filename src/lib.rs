@@ -1,5 +1,5 @@
-//! smew is a local AWS SSM connection tool with a multiplexing /
-//! broadcast experience and an interactive resource browser.
+//! smew is a local AWS SSM connection tool with an interactive resource
+//! browser and multi-host command dispatch over Run Command.
 
 pub mod aws;
 pub mod config;

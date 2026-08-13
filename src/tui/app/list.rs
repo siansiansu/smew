@@ -104,16 +104,13 @@ impl Model {
                 }
             }
             "s" => {
-                if self.adding_pane {
-                    self.add_pane_from_list();
-                } else {
-                    let targets = self.selected_targets();
-                    self.start_session(targets);
-                }
+                let inst = self.filtered.get(self.cursor).cloned();
+                self.start_session(inst);
             }
+            "x" => self.open_run_cmd(),
             "i" => {
-                let targets = self.selected_ssh_targets();
-                self.start_ssh_session(targets);
+                let inst = self.filtered.get(self.cursor).cloned();
+                self.start_ssh_session(inst);
             }
             "space" => {
                 if let Some(inst) = self.filtered.get(self.cursor)
@@ -123,7 +120,8 @@ impl Model {
                     if !self.marked.remove(&id) {
                         self.marked.insert(id);
                     }
-                    self.status = format!("{} marked for multi-open", self.marked.len());
+                    self.status =
+                        format!("{} marked — x runs a command on them", self.marked.len());
                 }
             }
             "left" | "right" => {
@@ -153,13 +151,6 @@ impl Model {
                     self.filter.clear();
                     self.apply_filter();
                     self.table_to_top();
-                    return;
-                }
-                if self.adding_pane {
-                    // cancel add-pane, return to the session
-                    self.adding_pane = false;
-                    self.mode = Mode::Session;
-                    self.status.clear();
                     return;
                 }
                 if s == "q" {
@@ -368,28 +359,9 @@ impl Model {
         self.ensure_cursor_visible();
     }
 
-    /// The instances to open: all marked (if any), else the instance under
-    /// the cursor. Non-connectable instances are dropped.
-    /// SSH connect targets: needs an IP, not SSM reachability.
-    fn selected_ssh_targets(&self) -> Vec<Instance> {
-        let has_ip = |i: &Instance| !i.public_ip.is_empty() || !i.private_ip.is_empty();
-        if !self.marked.is_empty() {
-            return self
-                .all
-                .iter()
-                .filter(|inst| self.marked.contains(&inst.instance_id) && has_ip(inst))
-                .cloned()
-                .collect();
-        }
-        self.filtered
-            .get(self.cursor)
-            .filter(|inst| has_ip(inst))
-            .cloned()
-            .map(|i| vec![i])
-            .unwrap_or_default()
-    }
-
-    fn selected_targets(&self) -> Vec<Instance> {
+    /// The run-command targets: all marked SSM-online hosts (if any), else
+    /// the connectable host under the cursor.
+    pub(crate) fn command_targets(&self) -> Vec<Instance> {
         if !self.marked.is_empty() {
             return self
                 .all
@@ -620,7 +592,7 @@ mod tests {
     }
 
     #[test]
-    fn selected_targets_marked_and_cursor() {
+    fn command_targets_marked_and_cursor() {
         let mut m = test_model();
         m.all = vec![
             inst("a", "i-1", "running", "", true),
@@ -630,14 +602,14 @@ mod tests {
         m.apply_filter();
         // cursor target
         m.cursor = 0;
-        assert_eq!(m.selected_targets().len(), 1);
+        assert_eq!(m.command_targets().len(), 1);
         m.cursor = 1; // not connectable → empty
-        assert!(m.selected_targets().is_empty());
+        assert!(m.command_targets().is_empty());
         // marked targets win over cursor; non-connectable dropped
         m.marked.insert("i-1".to_string());
         m.marked.insert("i-2".to_string());
         m.marked.insert("i-3".to_string());
-        let t = m.selected_targets();
+        let t = m.command_targets();
         assert_eq!(t.len(), 2);
     }
 }

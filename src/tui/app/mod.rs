@@ -8,10 +8,13 @@ mod mouse;
 mod overlays;
 mod resource;
 mod run;
+mod runcmd;
 
 pub use run::run;
 
 pub(crate) use list::{LIST_ROW_H, max_name_width};
+#[cfg(test)]
+pub(crate) use runcmd::CmdResult;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -58,6 +61,19 @@ pub enum Msg {
     DelayedRefresh,
     Tick,
     PaneOutput,
+    /// One host's polled status/output for a dispatched run-command,
+    /// stamped with the dispatch generation (stale pollers are dropped).
+    CmdInvocation {
+        generation: u64,
+        instance_id: String,
+        status: String,
+        output: String,
+    },
+    /// The dispatch itself (ssm:SendCommand) failed.
+    CmdError {
+        generation: u64,
+        err: String,
+    },
 }
 
 /// Constructs the inventory client and session driver for a profile,
@@ -75,6 +91,10 @@ pub enum Mode {
     Confirm,
     Forward,
     Session,
+    /// The run-command editor (`x`): a multi-line script for the marked hosts.
+    RunCmd,
+    /// Per-host status/output of a dispatched run-command.
+    CmdResults,
 }
 
 /// The port-forward form state (Mode::Forward). Field order: remote host,
@@ -120,31 +140,6 @@ impl FwdField {
 pub enum ConfirmKind {
     Reboot,
     CloseSession,
-}
-
-/// How session panes are tiled.
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum Layout {
-    Columns, // side-by-side (horizontal split)
-    Rows,    // stacked top-to-bottom (vertical split, full-width)
-    Grid,    // roughly-square grid
-}
-
-impl Layout {
-    pub fn name(self) -> &'static str {
-        match self {
-            Layout::Columns => "columns",
-            Layout::Rows => "rows",
-            Layout::Grid => "grid",
-        }
-    }
-    pub(super) fn next(self) -> Layout {
-        match self {
-            Layout::Columns => Layout::Rows,
-            Layout::Rows => Layout::Grid,
-            Layout::Grid => Layout::Columns,
-        }
-    }
 }
 
 /// The active sort column.
@@ -263,22 +258,27 @@ pub struct Model {
     pub(crate) latest_version: String,
     pub(crate) update_available: bool,
 
-    // multi-pane session state
+    /// Hosts marked with `space` — the target set of the run-command
+    /// action (`x`); empty means "the host under the cursor".
     pub(crate) marked: HashSet<String>,
-    pub(crate) panes: Vec<Arc<Pane>>,
-    pub(crate) focus: usize,
-    pub(crate) broadcast_group: HashSet<usize>, // Arc pointer identity of group members
+
+    // run-command state (`x`)
+    pub(crate) cmd_editor: super::input::MultiInput,
+    pub(crate) cmd_targets: Vec<Instance>,
+    pub(crate) cmd_results: Vec<runcmd::CmdResult>,
+    /// Bumped per dispatch; pollers answer with the generation they were
+    /// spawned under so results of an older run are dropped.
+    pub(crate) cmd_gen: u64,
+
+    // single-pane session state (k9s-style: one full-screen shell)
+    pub(crate) pane: Option<Arc<Pane>>,
     pub(crate) pane_dirty: Arc<AtomicBool>,
     pub(crate) leader: String,
     pub(crate) leader_pending: bool,
     pub(crate) ssh_user: String,
     pub(crate) ssh_key: String,
-    pub(crate) focus_nav: bool,
-    pub(crate) adding_pane: bool,
-    pub(crate) zoomed: bool,
     pub(crate) scrolling: bool,
     pub(crate) scroll_offset: usize,
-    pub(crate) layout: Layout,
 
     pub(crate) sort_by: SortKey,
     pub(crate) sort_asc: bool,
@@ -358,20 +358,18 @@ impl Model {
             latest_version: String::new(),
             update_available: false,
             marked: HashSet::new(),
-            panes: Vec::new(),
-            focus: 0,
-            broadcast_group: HashSet::new(),
+            cmd_editor: super::input::MultiInput::default(),
+            cmd_targets: Vec::new(),
+            cmd_results: Vec::new(),
+            cmd_gen: 0,
+            pane: None,
             pane_dirty: Arc::new(AtomicBool::new(false)),
             leader,
             leader_pending: false,
             ssh_user: opts.ssh_user,
             ssh_key: opts.ssh_key,
-            focus_nav: false,
-            adding_pane: false,
-            zoomed: false,
             scrolling: false,
             scroll_offset: 0,
-            layout: Layout::Columns,
             sort_by: SortKey::Name,
             sort_asc: true,
             count_buf: String::new(),
@@ -663,6 +661,23 @@ impl Model {
                 }
             }
 
+            Msg::CmdInvocation {
+                generation,
+                instance_id,
+                status,
+                output,
+            } => self.apply_cmd_invocation(generation, &instance_id, status, output),
+
+            Msg::CmdError { generation, err } => {
+                if generation == self.cmd_gen {
+                    for r in &mut self.cmd_results {
+                        r.status = "Error".to_string();
+                        r.output = err.clone();
+                    }
+                    self.status = format!("ssm:SendCommand failed: {err}");
+                }
+            }
+
             Msg::PaneOutput => {
                 // A pane produced output or exited. Allow further coalesced
                 // notifications, then reap panes whose process ended (returns
@@ -715,9 +730,6 @@ impl Model {
                     self.leader_pending = false;
                     return;
                 }
-                if self.focus_nav {
-                    self.focus_nav = false; // any other input exits focus-nav
-                }
                 self.session_paste(s);
             }
             Mode::Profiles => {
@@ -737,6 +749,9 @@ impl Model {
                 self.forward_field_mut().insert_str(s);
                 self.fwd.error.clear();
             }
+            // Pasting a whole script into the run-command editor works —
+            // embedded newlines split into lines.
+            Mode::RunCmd => self.cmd_editor.insert_str(s),
             _ => {}
         }
     }
@@ -750,6 +765,8 @@ impl Model {
             Mode::Confirm => self.update_confirm(&s),
             Mode::Forward => self.update_forward(k, &s),
             Mode::Session => self.update_session(k, &s),
+            Mode::RunCmd => self.update_run_cmd(k, &s),
+            Mode::CmdResults => self.update_cmd_results(&s),
             Mode::List => self.update_list(k, &s),
         }
     }

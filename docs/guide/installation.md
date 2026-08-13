@@ -104,6 +104,7 @@ Optional, feature by feature:
 | --- | --- |
 | `ec2:DescribeSecurityGroups` / `DescribeSubnets` / `DescribeVpcs` | richer detail view |
 | `ec2:RebootInstances` | the reboot action (`R`) |
+| `ssm:SendCommand` / `ssm:GetCommandInvocation` | the run-command action (`x`) — a script on many hosts with per-host results |
 | `cloudwatch:GetMetricStatistics` / `ListMetrics` | the `%CPU` / `%MEM` columns (opt-in: `metrics: true` in the config; free-tier-eligible APIs only, polled every 5 minutes; memory also needs the [CloudWatch agent](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html) on the hosts, without it the cell shows `n/a`) |
 | `ssm:GetParameter` | the update-available badge |
 | `ec2-instance-connect:SendSSHPublicKey` | `--ssh-config` ephemeral mode |

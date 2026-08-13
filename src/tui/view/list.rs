@@ -119,11 +119,12 @@ const LOGO: [&str; 4] = [
 ];
 const LOGO_W: u16 = 11;
 
-const LIST_MENU: [(&str, &str); 12] = [
+const LIST_MENU: [(&str, &str); 13] = [
     ("↑↓", "move"),
     (":", "command"),
     ("/", "filter"),
     ("space", "mark"),
+    ("x", "run command"),
     ("s", "connect (SSM)"),
     ("i", "ssh login"),
     ("enter", "details"),
@@ -517,13 +518,6 @@ fn bottom_bar(m: &Model) -> Line<'static> {
             Style::new().dim(),
         ));
         return Line::from(spans);
-    }
-    if m.adding_pane {
-        spans.push(sep.clone());
-        spans.push(Span::styled(
-            "adding pane — s to add · esc to cancel",
-            Style::new().fg(th.orange),
-        ));
     }
     if m.h_offset > 0 {
         spans.push(sep.clone());

@@ -16,7 +16,7 @@ default_region: ap-northeast-1
 # Unset defaults to 10s (floor 5s); "0" disables it (manual refresh only).
 refresh_interval: "10s"
 
-# Multiplexer leader (prefix) key inside a split session.
+# Leader (prefix) key inside a session.
 # Examples: "ctrl+a", "ctrl+ " (ctrl+space). Default "ctrl+b".
 session_leader: "ctrl+b"
 
@@ -70,7 +70,7 @@ theme's value). Colors are written as `"#rrggbb"`, a 256-color index
 ```yaml
 # ~/.config/smew/skins/mytheme.yaml
 green: "#50fa7b"     # running states, sync timestamp
-red: "#ff5555"       # down states, errors, broadcast
+red: "#ff5555"       # down states, errors, failed commands
 orange: "#ffb86c"    # transitional states, key hints, notices
 cyan: "#8be9fd"      # section/table headers, region
 pink: "#ff79c6"      # focused pane border, picker cursor

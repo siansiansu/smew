@@ -5,9 +5,9 @@ hero:
   name: smew
   text: Explore AWS from the terminal.
   tagline: >-
-    Browse EC2, S3, Lambda, RDS and more; shell in over SSM with split
-    panes and broadcast. No server, no inbound port 22 — access
-    control and audit stay on AWS.
+    Browse EC2, S3, Lambda, RDS and more; shell in over SSM and run
+    commands across many hosts at once. No server, no inbound port 22 —
+    access control and audit stay on AWS.
   image:
     src: /logo.svg
     alt: smew
@@ -40,10 +40,11 @@ features:
       console-style panel dashboard; drill from a vpc/subnet/sg into its
       instances; waste and trouble light up.
   - icon: 🪟
-    title: Multi-pane sessions
+    title: Sessions & run command
     details: >-
-      Mark hosts and open them as split panes of live SSM shells. Leader-key
-      broadcast, layouts, zoom, and scrollback — a full multiplexer over SSM.
+      Full-screen SSM shells with scrollback, and a multi-line run-command
+      editor: mark hosts, send a script through Run Command, watch
+      per-host status and output come back.
   - icon: 🔐
     title: SSH over SSM
     details: >-

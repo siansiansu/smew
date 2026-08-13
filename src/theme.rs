@@ -21,7 +21,7 @@ pub struct Theme {
     pub cyan: Color,
     /// Running/healthy states, sync timestamp.
     pub green: Color,
-    /// Down states, errors, broadcast borders/badge.
+    /// Down states, errors, failed commands.
     pub red: Color,
     /// Transitional states, key hints, notices, update badge.
     pub orange: Color,

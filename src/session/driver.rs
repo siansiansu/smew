@@ -84,7 +84,7 @@ impl PluginDriver {
 
     /// A developer-mode driver: "sessions" run a local shell and
     /// port-forwards run a placeholder loop — no AWS calls, no network. The
-    /// panes are real PTYs, so multiplexing/broadcast/reaping behave exactly
+    /// pane is a real PTY, so input forwarding and reaping behave exactly
     /// as in production.
     pub fn dev() -> Self {
         Self {

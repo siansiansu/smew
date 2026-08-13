@@ -60,9 +60,10 @@ Storage / Tags) so most records fit one screen; `Esc` returns to `:ec2`.
 | Key | Action |
 | --- | --- |
 | `Enter` / `d` | detail view of the selected host |
-| `Space` | mark / unmark host for multi-open |
-| `s` | connect over SSM (marked hosts as split panes, else the selected one) |
+| `s` | connect over SSM (the selected host) |
 | `i` | SSH login via EC2 Instance Connect: 60s key push, then `ssh user@ip` |
+| `Space` | mark / unmark host as a [run-command](/guide/sessions#run-a-command-on-many-hosts) target |
+| `x` | run a command on the marked hosts (else the selected one): multi-line editor, per-host results |
 | `R` | reboot selected host (running only, confirmation required) |
 | `F` | [port forward](/guide/quick-start#port-forward): local port → the instance, or a remote host (e.g. RDS) via it |
 | `c` | switch AWS profile |
@@ -78,38 +79,31 @@ matching (`cldprd` finds `Cloud.prod`), matched characters highlighted.
 `↑↓` / `Ctrl+p` / `Ctrl+n` move, `Enter` selects, `Esc` clears the query
 then cancels, `Ctrl+c` quits.
 
+## Run command (`x`)
+
+In the editor: `Enter` inserts a new line, `Ctrl+s` sends the script,
+`Esc` cancels. Pasting a multi-line script works. On the results page:
+`↑↓` scroll, `x` reopens the editor (script and targets kept) for a
+re-run, `Esc` goes back to the list.
+
 ## Session (leader prefix, default `Ctrl+b`)
 
-Press the leader, then:
+A session is one full-screen shell. Press the leader, then:
 
 | Key | Action |
 | --- | --- |
-| `h` / `l` (or `←` / `→`, `p` / `n`) | focus previous / next pane |
-| `j` / `k` (or `↓` / `↑`) | focus one grid row down / up |
-| `space` | add/remove focused pane from broadcast group — ≥2 auto-broadcasts 🔊 |
-| `b` | select all / clear the broadcast group |
-| `v` | cycle layout: columns → rows → grid |
-| `z` | zoom — toggle the focused pane full-screen |
-| `[` | scroll the pane's history (shell output only — less/vim scroll inside the app); `q` / `Esc` / `]` exits |
-| `a` | add a pane (pick another host from the list) |
-| `x` | close the focused pane (disabled while broadcast is on) |
-| `d` | close the whole session — ends all SSM sessions (confirms) |
+| `[` | scroll the session's history (shell output only — less/vim scroll inside the app); `q` / `Esc` / `]` exits |
+| `x` / `d` | close the session — ends the SSM session (confirms) |
 | `?` | toggle help |
 | leader twice | send a literal leader key to the shell |
 
-After a focus command the arrow keys keep moving focus without re-pressing
-the leader (`space` still toggles broadcast membership). `Esc` / `Enter`
-exit this mode without reaching the shell; any other key exits *and* is
-forwarded to the shell.
-
-Typing `exit` in a pane's shell ends that pane's SSM session and closes the
-pane; closing the last pane returns to the list. A which-key style popup
-lists these commands whenever the leader is pending.
+Typing `exit` in the shell ends the SSM session and returns to the list. A
+which-key style popup lists these commands whenever the leader is pending.
 
 ## Mouse
 
 On by default (config `mouse: false` disables):
 
-- wheel scrolls the list, detail/help overlays, and a pane's scrollback
-- click selects a row / focuses a pane; double-click connects (`Connected` hosts only)
+- wheel scrolls the list, detail/help overlays, and the session's scrollback
+- click selects a row; double-click connects (`Connected` hosts only)
 - terminal-native text selection needs `Shift+drag` while mouse capture is on

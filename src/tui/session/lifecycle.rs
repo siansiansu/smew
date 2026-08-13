@@ -1,249 +1,129 @@
-//! Pane lifecycle: starting sessions, adding panes, closing them, and
-//! reaping panes whose process has ended.
+//! Pane lifecycle: starting the single session pane, resizing it, closing
+//! it, and reaping it when its process ends.
 
-use std::sync::Arc;
-
-use super::pane_key;
 use crate::inventory::Instance;
 use crate::session::Pane;
 use crate::tui::{ConfirmKind, Mode, Model};
 
 impl Model {
-    /// Starts an SSM shell for the instance on a fresh PTY pane.
-    /// Reports a failure via the status bar and returns None.
-    fn spawn_pane(&mut self, inst: &Instance, cols: u16, rows: u16) -> Option<Arc<Pane>> {
-        let drv = self.driver.clone()?;
-        let argv = drv.shell_command(&inst.instance_id);
-        match Pane::start(&inst.name, &argv, cols, rows, self.pane_notifier()) {
-            Ok(p) => Some(p),
-            Err(e) => {
-                self.status = format!("failed to start {}: {e}", inst.name);
-                None
-            }
-        }
+    /// The session pane's emulator size: full width, one line each for the
+    /// header and the pane title.
+    fn pane_dims(&self) -> (u16, u16) {
+        (self.width.max(1), self.height.saturating_sub(2).max(1))
     }
 
-    /// Rough initial pane height; relayout_session fixes it right after.
-    fn initial_pane_rows(&self) -> u16 {
-        self.height.saturating_sub(4).max(1)
-    }
-
-    /// Opens the given instances as tiled SSM-shell panes and enters the
-    /// session view.
-    pub(crate) fn start_session(&mut self, targets: Vec<Instance>) {
-        if targets.is_empty() {
-            self.status = "nothing connectable selected".to_string();
+    /// Opens an SSM shell to the instance as the (single) session pane and
+    /// enters the session view.
+    pub(crate) fn start_session(&mut self, inst: Option<Instance>) {
+        let Some(inst) = inst.filter(|i| i.is_connectable()) else {
+            self.status = "not connectable via SSM".to_string();
             return;
-        }
+        };
         let Some(drv) = self.driver.clone() else {
             return;
         };
-        let specs: Vec<(String, Vec<String>)> = targets
-            .iter()
-            .map(|inst| (inst.name.clone(), drv.shell_command(&inst.instance_id)))
-            .collect();
-        self.open_panes(specs);
+        let argv = drv.shell_command(&inst.instance_id);
+        self.open_pane(&inst.name, &argv);
     }
 
-    /// Opens the given instances as SSH login panes: `smew eic-ssh` pushes a
-    /// 60-second EC2 Instance Connect key, then runs `ssh user@ip` over the
-    /// network (public IP preferred). SSM plays no part — the host's port 22
-    /// must be reachable from here.
-    pub(crate) fn start_ssh_session(&mut self, targets: Vec<Instance>) {
-        if targets.is_empty() {
+    /// Opens an SSH login pane: `smew eic-ssh` pushes a 60-second EC2
+    /// Instance Connect key, then runs `ssh user@ip` over the network
+    /// (public IP preferred). SSM plays no part — the host's port 22 must
+    /// be reachable from here.
+    pub(crate) fn start_ssh_session(&mut self, inst: Option<Instance>) {
+        let has_ip = |i: &Instance| !i.public_ip.is_empty() || !i.private_ip.is_empty();
+        let Some(inst) = inst.filter(has_ip) else {
             self.status = "no host with an IP selected".to_string();
             return;
-        }
+        };
         let Some(drv) = self.driver.clone() else {
             return;
         };
-        let mut specs = Vec::new();
-        for inst in &targets {
-            let ip = if inst.public_ip.is_empty() {
-                &inst.private_ip
-            } else {
-                &inst.public_ip
-            };
-            match drv.ssh_shell_command(&inst.instance_id, ip, &self.ssh_user, &self.ssh_key) {
-                Ok(argv) => specs.push((format!("{} (ssh)", inst.name), argv)),
-                Err(e) => {
-                    self.status = format!("ssh {}: {e}", inst.name);
-                    return;
-                }
-            }
-        }
-        self.open_panes(specs);
-    }
-
-    /// Replaces the current session (if any) with panes running the given
-    /// (title, argv) specs and enters the session view.
-    fn open_panes(&mut self, specs: Vec<(String, Vec<String>)>) {
-        let cols = ((self.width as usize / specs.len().max(1))
-            .saturating_sub(2)
-            .max(1)) as u16;
-        let rows = self.initial_pane_rows();
-        // Release any panes from a previous session before replacing them.
-        for p in self.panes.drain(..) {
-            p.close();
-        }
-        self.broadcast_group.clear();
-        for (title, argv) in &specs {
-            match Pane::start(title, argv, cols, rows, self.pane_notifier()) {
-                Ok(p) => self.panes.push(p),
-                Err(e) => self.status = format!("failed to start {title}: {e}"),
-            }
-        }
-        if self.panes.is_empty() {
-            return;
-        }
-        self.mode = Mode::Session;
-        self.focus = 0;
-        self.focus_nav = false;
-        self.leader_pending = false;
-        self.adding_pane = false;
-        self.zoomed = false;
-        self.scrolling = false;
-        self.scroll_offset = 0;
-        self.status.clear();
-        self.relayout_session();
-    }
-
-    /// Adds the list-selected host as a new pane and returns to the session
-    /// (used by the in-session "add pane" flow).
-    pub(crate) fn add_pane_from_list(&mut self) {
-        let Some(inst) = self.filtered.get(self.cursor).cloned() else {
-            return;
+        let ip = if inst.public_ip.is_empty() {
+            &inst.private_ip
+        } else {
+            &inst.public_ip
         };
-        if !inst.is_connectable() {
-            self.status = format!("not connectable via SSM: {}", inst.name);
-            return;
-        }
-        let rows = self.initial_pane_rows();
-        if let Some(p) = self.spawn_pane(&inst, 20, rows) {
-            self.panes.push(p);
-            self.focus = self.panes.len() - 1;
-            self.adding_pane = false;
-            self.mode = Mode::Session;
-            self.status.clear();
-            self.relayout_session();
+        match drv.ssh_shell_command(&inst.instance_id, ip, &self.ssh_user, &self.ssh_key) {
+            Ok(argv) => self.open_pane(&format!("{} (ssh)", inst.name), &argv),
+            Err(e) => self.status = format!("ssh {}: {e}", inst.name),
         }
     }
 
-    /// Opens a port-forwarding pane running the given argv: appended to the
-    /// running session, or as a fresh single-pane session. Focuses it.
+    /// Opens a port-forwarding pane running the given argv as its own
+    /// session (sessions are single-pane; a running one is replaced).
     pub(crate) fn start_forward_pane(
         &mut self,
         title: &str,
         argv: &[String],
     ) -> Result<(), String> {
-        let rows = self.initial_pane_rows();
-        let p =
-            Pane::start(title, argv, 20, rows, self.pane_notifier()).map_err(|e| e.to_string())?;
-        if self.panes.is_empty() {
-            // fresh session: reset multiplexer state like start_session does
-            self.broadcast_group.clear();
-            self.zoomed = false;
-            self.scrolling = false;
-            self.scroll_offset = 0;
-            self.focus_nav = false;
-            self.leader_pending = false;
-            self.adding_pane = false;
+        self.open_pane(title, argv);
+        if self.pane.is_none() {
+            return Err(self.status.clone());
         }
-        self.panes.push(p);
-        self.focus = self.panes.len() - 1;
-        self.mode = Mode::Session;
-        self.status.clear();
-        self.relayout_session();
         Ok(())
     }
 
-    pub(crate) fn close_session(&mut self) {
-        for p in &self.panes {
+    /// Replaces the session pane (if any) with one running the given argv
+    /// and enters the session view.
+    fn open_pane(&mut self, title: &str, argv: &[String]) {
+        if let Some(p) = self.pane.take() {
             p.close();
         }
-        self.panes.clear();
-        self.broadcast_group.clear();
-        self.marked.clear();
+        let (cols, rows) = self.pane_dims();
+        match Pane::start(title, argv, cols, rows, self.pane_notifier()) {
+            Ok(p) => self.pane = Some(p),
+            Err(e) => {
+                self.status = format!("failed to start {title}: {e}");
+                return;
+            }
+        }
+        self.mode = Mode::Session;
+        self.leader_pending = false;
+        self.scrolling = false;
+        self.scroll_offset = 0;
+        self.status.clear();
+    }
+
+    /// Fits the session pane's emulator + PTY to the current screen.
+    pub(crate) fn relayout_session(&self) {
+        if let Some(p) = &self.pane {
+            let (cols, rows) = self.pane_dims();
+            p.resize(cols, rows);
+        }
+    }
+
+    pub(crate) fn close_session(&mut self) {
+        if let Some(p) = self.pane.take() {
+            p.close();
+        }
         self.mode = Mode::List;
         self.status = "session closed".to_string();
     }
 
-    /// Closes and removes panes whose process has ended (e.g. the user typed
+    /// Closes the session when its process has ended (e.g. the user typed
     /// `exit` in the remote shell). Without this the session view keeps
-    /// forwarding keys to a dead PTY and appears frozen. When the last pane
-    /// goes, the session ends and the UI returns to the instance list.
+    /// forwarding keys to a dead PTY and appears frozen.
     pub(crate) fn reap_exited_panes(&mut self) {
-        let focused = self.panes.get(self.focus).map(pane_key);
-        let before = self.panes.len();
-        let mut note = String::new();
-        let mut kept = Vec::with_capacity(before);
-        for p in std::mem::take(&mut self.panes) {
-            if !p.is_done() {
-                kept.push(p);
-                continue;
-            }
-            let tail = p.last_line();
-            note = if tail.is_empty() {
-                p.title.clone()
-            } else {
-                format!("{}: {}", p.title, tail)
-            };
-            p.close(); // release the PTY
-            self.broadcast_group.remove(&pane_key(&p));
-        }
-        self.panes = kept;
-        if self.panes.len() == before {
+        let Some(p) = self.pane.as_ref().filter(|p| p.is_done()) else {
             return;
-        }
-
-        if self.panes.is_empty() {
-            self.marked.clear();
-            self.zoomed = false;
-            self.scrolling = false;
-            self.scroll_offset = 0;
-            self.focus_nav = false;
-            self.leader_pending = false;
-            self.adding_pane = false;
-            if self.mode == Mode::Session
-                || (self.mode == Mode::Confirm && self.confirm_action == ConfirmKind::CloseSession)
-            {
-                self.mode = Mode::List;
-            }
-            self.status = format!("session ended — {note}");
-            return;
-        }
-
-        // Keep focus on the pane it was on if that one survived; else clamp.
-        let idx = match self.panes.iter().position(|p| Some(pane_key(p)) == focused) {
-            Some(i) => i,
-            None => {
-                // the focused pane itself exited
-                self.scrolling = false;
-                self.scroll_offset = 0;
-                self.focus.min(self.panes.len() - 1)
-            }
         };
-        self.focus = idx;
-        self.status = format!("pane ended — {note}");
-        self.relayout_session();
-    }
-
-    pub(super) fn close_focused_pane(&mut self) {
-        if self.focus >= self.panes.len() {
-            return;
-        }
-        let closed = self.panes.remove(self.focus);
-        closed.close();
-        self.broadcast_group.remove(&pane_key(&closed));
-        if self.panes.is_empty() {
-            return self.close_session();
-        }
-        if self.focus >= self.panes.len() {
-            self.focus = self.panes.len() - 1;
-        }
+        let tail = p.last_line();
+        let note = if tail.is_empty() {
+            p.title.clone()
+        } else {
+            format!("{}: {tail}", p.title)
+        };
+        let p = self.pane.take().unwrap();
+        p.close(); // release the PTY
         self.scrolling = false;
         self.scroll_offset = 0;
-        self.relayout_session();
+        if self.mode == Mode::Session
+            || (self.mode == Mode::Confirm && self.confirm_action == ConfirmKind::CloseSession)
+        {
+            self.mode = Mode::List;
+        }
+        self.status = format!("session ended — {note}");
     }
 }
 
@@ -252,17 +132,17 @@ mod tests {
     use super::super::test_util::{exited_pane, live_pane};
     use super::*;
 
-    // Typing `exit` in the last pane must end the session and return to the
+    // Typing `exit` in the pane must end the session and return to the
     // list (the reported freeze: the session view kept forwarding keys to a
     // dead PTY).
     #[test]
-    fn reap_last_pane_ends_session() {
+    fn reap_dead_pane_ends_session() {
         let mut m = crate::tui::test_model();
         m.mode = Mode::Session;
-        m.panes = vec![exited_pane()];
+        m.pane = Some(exited_pane());
         m.reap_exited_panes();
         assert_eq!(m.mode, Mode::List);
-        assert!(m.panes.is_empty());
+        assert!(m.pane.is_none());
         assert!(
             m.status.contains("session ended"),
             "status = {:?}",
@@ -270,29 +150,45 @@ mod tests {
         );
     }
 
-    // When one of several panes exits, only that pane closes; the session
-    // stays up, focus lands on a survivor, and the dead pane leaves the
-    // broadcast group.
+    // A live pane is left alone.
     #[test]
-    fn reap_keeps_session_with_survivors() {
+    fn reap_keeps_live_pane() {
         let mut m = crate::tui::test_model();
         m.mode = Mode::Session;
-        let dead = exited_pane();
-        let live = live_pane();
-        let dead_key = pane_key(&dead);
-        let live_key = pane_key(&live);
-        m.panes = vec![dead, live];
-        m.focus = 1;
-        m.broadcast_group.insert(dead_key);
+        m.pane = Some(live_pane());
         m.reap_exited_panes();
         assert_eq!(m.mode, Mode::Session);
-        assert_eq!(m.panes.len(), 1);
-        assert_eq!(pane_key(&m.panes[0]), live_key, "want just the live pane");
-        assert_eq!(m.focus, 0, "focus moved to the surviving pane");
-        assert!(
-            !m.broadcast_group.contains(&dead_key),
-            "dead pane still in the broadcast group"
-        );
-        m.panes[0].close();
+        assert!(m.pane.is_some());
+        m.pane.take().unwrap().close();
+    }
+
+    // Opening a session replaces any running pane (sessions are single-pane).
+    #[test]
+    fn open_replaces_running_pane() {
+        let mut m = crate::tui::test_model();
+        m.driver = Some(crate::session::PluginDriver::dev());
+        let inst = |name: &str| Instance {
+            instance_id: format!("i-{name}"),
+            name: name.to_string(),
+            state: "running".to_string(),
+            ssm: Some(crate::inventory::SsmStatus {
+                online: true,
+                agent_version: "3.3".into(),
+                ping_status: "Online".into(),
+            }),
+            ..Default::default()
+        };
+        m.start_session(Some(inst("web")));
+        assert_eq!(m.mode, Mode::Session);
+        assert_eq!(m.pane.as_ref().unwrap().title, "web");
+        // opening another host replaces the pane (never a second one)
+        m.start_session(Some(inst("db")));
+        assert_eq!(m.pane.as_ref().unwrap().title, "db");
+        m.pane.take().unwrap().close();
+
+        // a non-connectable host only reports
+        m.start_session(Some(Instance::default()));
+        assert!(m.pane.is_none());
+        assert!(m.status.contains("not connectable"), "{}", m.status);
     }
 }

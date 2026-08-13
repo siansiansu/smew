@@ -14,8 +14,8 @@ mod view;
 pub use app::{BuildFn, Options, run};
 
 pub(crate) use app::{
-    ConfirmKind, FwdField, LIST_ROW_H, Layout, Mode, Model, SortKey, age_label, leader_label,
+    ConfirmKind, FwdField, LIST_ROW_H, Mode, Model, SortKey, age_label, leader_label,
 };
 
 #[cfg(test)]
-pub(crate) use app::{max_name_width, test_model};
+pub(crate) use app::{CmdResult, max_name_width, test_model};

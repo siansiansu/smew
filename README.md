@@ -6,9 +6,9 @@
 
 <p align="center">
 A terminal UI for AWS. Browse EC2, S3, Lambda, RDS and the rest of your
-account from one table, then shell into instances over SSM with split
-panes and broadcast. No bastion, no inbound port 22; access control and
-audit stay on AWS.
+account from one table, shell into instances over SSM, and run a command
+across many hosts at once with per-host results. No bastion, no inbound
+port 22; access control and audit stay on AWS.
 </p>
 
 <p align="center">
@@ -112,9 +112,9 @@ The `?` page inside the app always matches your build. The core set:
 | Sort | `N` `S` `T` `A` `P` (`C` `M`) | name / state / type / age / ip (cpu / mem); repeat to reverse |
 | Describe | `Enter` or `d` | dashboard of panels, grouped like the console |
 | Drill down | `Enter` on a vpc / subnet / sg | its instances, pre-filtered; `Esc` goes back |
-| Connect (SSM) | `s` | marked hosts open as split panes |
+| Connect (SSM) | `s` | full-screen shell to the selected host |
 | SSH login | `i` | EC2 Instance Connect key push, then `ssh user@ip` |
-| Mark for multi-open | `Space` | |
+| Run command | `Space` marks, `x` runs | multi-line script via Run Command; per-host results |
 | Port forward | `F` | to the instance, or through it to e.g. RDS |
 | Reboot | `R` | running hosts, with confirmation |
 | Switch AWS profile | `c`, `:ctx`, `:profile name` | fuzzy-matched |
@@ -124,8 +124,7 @@ The `?` page inside the app always matches your build. The core set:
 | Quit | `:q` / `Ctrl+c` | |
 
 Inside a session, keys go to the remote shell; the leader (default
-`Ctrl+b`) prefixes pane commands: focus, broadcast, layouts, zoom,
-scrollback, add/close pane.
+`Ctrl+b`) prefixes session commands: scrollback, close session.
 
 ---
 
@@ -160,16 +159,16 @@ it instead; `d` always describes.
 
 ---
 
-## Sessions
+## Sessions & run command
 
-`s` opens an SSM shell to the selected host. Mark several with `Space`
-first and they open as tiled panes in one session:
+`s` opens a full-screen SSM shell to the selected host (leader `[`
+scrolls its history; `exit` or leader `x`/`d` ends it).
 
-- broadcast typed input to some or all panes (leader+`space` picks
-  members, leader+`b` selects all)
-- layouts (columns / rows / grid), zoom, per-pane scrollback
-- add panes from the list, close them, or end the whole session with
-  confirmation
+To run something on several machines at once, mark them with `Space` and
+press `x`: a multi-line editor opens, `Ctrl+s` sends the script through
+SSM Run Command (`AWS-RunShellScript`), and a results page polls each
+host until it finishes — per-host status and output, `x` to edit and
+re-run. No interactive session needed, nothing installed server-side.
 
 `i` logs in over plain SSH instead of SSM: smew pushes a 60-second key
 via EC2 Instance Connect and runs `ssh user@ip`. Useful when the SSM

@@ -191,16 +191,21 @@ impl Model {
 
         sec(&mut lines, "Actions");
         r(&mut lines, "enter / d", "detail view of the selected host");
-        r(&mut lines, "space", "mark / unmark host for multi-open");
-        r(
-            &mut lines,
-            "s",
-            "connect over SSM (marked hosts as split panes, else the selected one)",
-        );
+        r(&mut lines, "s", "connect over SSM (the selected host)");
         r(
             &mut lines,
             "i",
             "SSH login via EC2 Instance Connect (pushes a 60s key, then ssh user@ip)",
+        );
+        r(
+            &mut lines,
+            "space",
+            "mark / unmark host as a run-command target",
+        );
+        r(
+            &mut lines,
+            "x",
+            "run a command on the marked hosts (else the selected one) via Run Command — multi-line, per-host results",
         );
         r(
             &mut lines,
@@ -228,48 +233,14 @@ impl Model {
         );
         row(
             &mut lines,
-            format!("{lead} h / l / ↑ / ↓"),
-            "focus pane (↑/↓ move by grid row), then arrows keep moving".into(),
-        );
-        row(
-            &mut lines,
-            format!("{lead} space"),
-            "add/remove focused pane from broadcast group — ≥2 auto-broadcasts (🔊)".into(),
-        );
-        row(
-            &mut lines,
-            format!("{lead} b"),
-            "select all / clear the broadcast group".into(),
-        );
-        row(
-            &mut lines,
-            format!("{lead} v"),
-            "cycle layout: columns → rows → grid".into(),
-        );
-        row(
-            &mut lines,
-            format!("{lead} z"),
-            "zoom — toggle the focused pane full-screen".into(),
-        );
-        row(
-            &mut lines,
             format!("{lead} ["),
-            "scroll the pane's history (shell output only — less/vim scroll inside the app)".into(),
+            "scroll the session's history (shell output only — less/vim scroll inside the app)"
+                .into(),
         );
         row(
             &mut lines,
-            format!("{lead} a"),
-            "add a pane (pick another host from the list)".into(),
-        );
-        row(
-            &mut lines,
-            format!("{lead} x"),
-            "close the focused pane (disabled while broadcast is on)".into(),
-        );
-        row(
-            &mut lines,
-            format!("{lead} d"),
-            "close the whole session — ends all SSM sessions (confirms)".into(),
+            format!("{lead} x / {lead} d"),
+            "close the session — ends the SSM session (confirms)".into(),
         );
         row(
             &mut lines,
@@ -279,8 +250,7 @@ impl Model {
         row(
             &mut lines,
             "exit (in shell)".into(),
-            "ends that pane's SSM session and closes the pane; last pane returns to the list"
-                .into(),
+            "ends the SSM session and returns to the list".into(),
         );
 
         lines.push(Line::raw(""));
@@ -304,10 +274,8 @@ impl Model {
 /// underlying screen (drawn by the caller).
 pub(super) fn draw_confirm(m: &Model, f: &mut Frame) {
     let body = match m.confirm_action {
-        ConfirmKind::CloseSession => format!(
-            "Close session?\n\nThis ends {} SSM session(s) and kills any\nrunning commands in them.\n\n[y] close    [n / esc] cancel",
-            m.panes.len()
-        ),
+        ConfirmKind::CloseSession => "Close session?\n\nThis ends the SSM session and kills any\nrunning command in it.\n\n[y] close    [n / esc] cancel"
+            .to_string(),
         ConfirmKind::Reboot => {
             let inst = &m.confirm;
             format!(
@@ -450,7 +418,7 @@ mod tests {
         m.mode = Mode::Help;
         let s = render(&m, 100, 60);
         assert!(s.contains("— keys"), "help title missing:\n{s}");
-        assert!(s.contains("^b h / l"), "leader rows missing:\n{s}");
+        assert!(s.contains("^b ["), "leader rows missing:\n{s}");
         // resource views are grouped by AWS official category
         assert!(
             s.contains("Application Integration"),
